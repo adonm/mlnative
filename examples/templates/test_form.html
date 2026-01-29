@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>mlnative Test Interface</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+</head>
+<body>
+    <main class="container">
+        <h1>mlnative Test Interface</h1>
+        <p>Build API calls interactively and see the generated Python code</p>
+        
+        <article>
+            <p><strong>Tip:</strong> Enter coordinates (longitude, latitude), zoom level, and image dimensions. 
+            Enable "HighDPI (@2x)" for retina displays. Style can be a URL or local file path.</p>
+        </article>
+        
+        <form action="/preview" method="post">
+            <div class="grid">
+                <label>
+                    Longitude
+                    <input type="number" id="lon" name="lon" step="any" value="{{ default_lon }}" required>
+                </label>
+                
+                <label>
+                    Latitude
+                    <input type="number" id="lat" name="lat" step="any" value="{{ default_lat }}" required>
+                </label>
+            </div>
+            
+            <div class="grid">
+                <label>
+                    Zoom Level (0-22)
+                    <input type="number" id="zoom" name="zoom" step="0.1" min="0" max="22" value="{{ default_zoom }}" required>
+                </label>
+                
+                <label>
+                    Width (px)
+                    <input type="number" id="width" name="width" min="64" max="2048" value="{{ default_width }}" required>
+                </label>
+            </div>
+            
+            <div class="grid">
+                <label>
+                    Height (px)
+                    <input type="number" id="height" name="height" min="64" max="2048" value="{{ default_height }}" required>
+                </label>
+                
+                <label>
+                    Bearing (degrees)
+                    <input type="number" id="bearing" name="bearing" step="1" min="0" max="360" value="0">
+                </label>
+            </div>
+            
+            <label>
+                Pitch (degrees)
+                <input type="number" id="pitch" name="pitch" step="1" min="0" max="60" value="0">
+            </label>
+            
+            <label>
+                Style URL or Path
+                <input type="text" id="style" name="style" value="{{ default_style }}" placeholder="https://tiles.openfreemap.org/styles/liberty" required>
+            </label>
+            
+            <fieldset>
+                <label>
+                    <input type="checkbox" id="highdpi" name="highdpi" value="true" role="switch">
+                    Enable HighDPI (@2x) rendering for retina displays
+                </label>
+            </fieldset>
+            
+            <button type="submit">Generate Map & Show Code</button>
+        </form>
+    </main>
+</body>
+</html>

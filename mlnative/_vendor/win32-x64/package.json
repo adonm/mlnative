@@ -1,0 +1,5 @@
+{
+  "name": "mlnative-vendor-win32-x64",
+  "version": "0.1.0",
+  "description": "Pre-built maplibre-gl-native for win32-x64"
+}

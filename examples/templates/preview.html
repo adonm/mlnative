@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Map Preview - mlnative</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+</head>
+<body>
+    <main class="container">
+        <a href="/" class="secondary">← Back to Form</a>
+        <h1>Map Preview</h1>
+        
+        <div class="grid">
+            <article>
+                <h2>Generated Python Code</h2>
+                <p>
+                    <strong>Parameters:</strong><br>
+                    Center: [{{ lon }}, {{ lat }}]<br>
+                    Zoom: {{ zoom }}<br>
+                    Size: {{ width }}x{{ height }}{% if highdpi %} @2x{% endif %}<br>
+                    Style: {{ style }}<br>
+                    {% if bearing %}Bearing: {{ bearing }}°<br>{% endif %}
+                    {% if pitch %}Pitch: {{ pitch }}°<br>{% endif %}
+                </p>
+                
+                <pre><code>{{ python_code }}</code></pre>
+                
+                <p><small><strong>API URL:</strong><br>{{ api_url }}</small></p>
+            </article>
+            
+            <article>
+                <h2>Generated Map</h2>
+                {% if error %}
+                <p style="color: var(--pico-color-red-500);">
+                    <strong>Error generating map:</strong><br>
+                    {{ error }}
+                </p>
+                {% else %}
+                <img src="{{ map_url }}" alt="Generated map" style="max-width: 100%; height: auto;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                <p style="display: none; color: var(--pico-color-red-500);">
+                    <strong>Failed to load map image.</strong><br>
+                    This usually means the vendor binaries are not installed.<br>
+                    Run: <code>just build-vendor</code>
+                </p>
+                {% endif %}
+                <p><small>
+                    {% if highdpi %}
+                    HighDPI (@2x) - Retina optimized
+                    {% else %}
+                    Standard resolution
+                    {% endif %}
+                </small></p>
+            </article>
+        </div>
+    </main>
+</body>
+</html>

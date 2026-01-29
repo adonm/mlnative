@@ -1,0 +1,55 @@
+# Dockerfile for running mlnative tests with proper library versions
+FROM ubuntu:24.04
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    build-essential \
+    libjpeg8 \
+    libicu74 \
+    libgl1 \
+    libglx0 \
+    libopengl0 \
+    python3.12 \
+    python3.12-venv \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install mise (tool manager)
+RUN curl https://mise.run | sh
+ENV PATH="/root/.local/bin:$PATH"
+
+# Trust mise config and install tools
+RUN mise trust
+RUN mise install
+
+# Set working directory
+WORKDIR /app
+
+# Copy config files first (for tool installation)
+COPY mise.toml ./
+
+# Trust and install tools
+RUN mise trust
+RUN mise install
+
+# Copy remaining project files
+COPY pyproject.toml Justfile README.md ./
+COPY mlnative/ ./mlnative/
+COPY examples/ ./examples/
+COPY tests/ ./tests/
+COPY scripts/ ./scripts/
+
+# Setup project using mise exec
+RUN mise exec -- just setup
+
+# Build vendor binaries
+RUN mise exec -- just build-vendor
+
+# Install native module
+RUN cd mlnative/_vendor/linux-x64 && \
+    mise exec -- bun install @maplibre/maplibre-gl-native && \
+    mise exec -- bun pm untrusted
+
+# Run tests
+CMD ["mise", "exec", "--", "just", "test"]

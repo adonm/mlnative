@@ -1,0 +1,5 @@
+{
+  "name": "mlnative-vendor-darwin-x64",
+  "version": "0.1.0",
+  "description": "Pre-built maplibre-gl-native for darwin-x64"
+}
