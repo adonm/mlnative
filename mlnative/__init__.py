@@ -7,5 +7,5 @@ A grug-brained library for rendering static map images.
 from .exceptions import MlnativeError
 from .map import Map
 
-__version__ = "0.1.0"
+__version__ = "0.1.0-alpha"
 __all__ = ["Map", "MlnativeError"]

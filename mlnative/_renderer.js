@@ -1,8 +1,9 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 /**
  * MapLibre GL Native renderer for mlnative.
  * 
  * Reads JSON config from stdin, renders map, outputs PNG bytes to stdout.
+ * Works with both Node.js and Bun runtimes.
  */
 
 const fs = require('fs');
@@ -69,47 +70,59 @@ const mapOptions = {
     ratio: config.pixelRatio || 1
 };
 
-// Handle style
-let style = config.style;
-if (typeof style === 'string') {
-    // URL - will be fetched by request handler
-    // Nothing to do
-} else if (typeof style === 'object') {
-    // Inline style object
-    // Already set
-}
-
 // Create and configure map
 const map = new mbgl.Map(mapOptions);
 
-// Load style
-try {
-    map.load(style);
-} catch (e) {
-    console.error(`Failed to load style: ${e.message}`);
-    process.exit(1);
-}
-
-// Render options
-const renderOptions = {
-    zoom: config.zoom,
-    center: config.center,
-    bearing: config.bearing || 0,
-    pitch: config.pitch || 0,
-    width: config.width,
-    height: config.height
-};
-
-// Render
-map.render(renderOptions, (err, buffer) => {
-    if (err) {
-        console.error(`Render error: ${err.message}`);
-        map.release();
+// Function to load style and render
+async function loadStyleAndRender() {
+    let style = config.style;
+    
+    // If style is a URL, fetch it first
+    if (typeof style === 'string' && (style.startsWith('http://') || style.startsWith('https://'))) {
+        try {
+            const response = await fetch(style);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch style: HTTP ${response.status}`);
+            }
+            style = await response.json();
+        } catch (e) {
+            console.error(`Failed to fetch style from ${config.style}: ${e.message}`);
+            process.exit(1);
+        }
+    }
+    
+    // Load style
+    try {
+        map.load(style);
+    } catch (e) {
+        console.error(`Failed to load style: ${e.message}`);
         process.exit(1);
     }
     
-    // Output PNG bytes to stdout
-    process.stdout.write(buffer);
-    map.release();
-    process.exit(0);
-});
+    // Render options
+    const renderOptions = {
+        zoom: config.zoom,
+        center: config.center,
+        bearing: config.bearing || 0,
+        pitch: config.pitch || 0,
+        width: config.width,
+        height: config.height
+    };
+    
+    // Render
+    map.render(renderOptions, (err, buffer) => {
+        if (err) {
+            console.error(`Render error: ${err.message}`);
+            map.release();
+            process.exit(1);
+        }
+        
+        // Output PNG bytes to stdout
+        process.stdout.write(buffer);
+        map.release();
+        process.exit(0);
+    });
+}
+
+// Run
+loadStyleAndRender();

@@ -41,9 +41,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/mlnative"
-Repository = "https://github.com/yourusername/mlnative"
-Issues = "https://github.com/yourusername/mlnative/issues"
+Homepage = "https://github.com/adonm/mlnative"
+Repository = "https://github.com/adonm/mlnative"
+Issues = "https://github.com/adonm/mlnative/issues"
 
 [tool.ruff]
 target-version = "py312"

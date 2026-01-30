@@ -28,7 +28,7 @@ test-filter PATTERN:
 
 # Run only unit tests (skip integration tests that need vendor binaries)
 test-unit:
-    uv run python -m pytest tests/ -v -k "not render" --tb=short
+    uv run python -m pytest tests/ -v -k "Validation" --tb=short
 
 # Run linting
 lint:
@@ -111,8 +111,8 @@ stats:
 
 # Run tests in container (for systems with incompatible libraries)
 test-docker:
-    podman build -f Dockerfile.test -t mlnative-test .
-    podman run --rm mlnative-test
+    docker build -f Dockerfile.test -t mlnative-test .
+    docker run --rm mlnative-test
 
 # Install all tools via mise (local dev)
 install-tools:

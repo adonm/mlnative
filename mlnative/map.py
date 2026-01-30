@@ -9,6 +9,7 @@ Grug principles:
 """
 
 import json
+import warnings
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,11 @@ from .exceptions import MlnativeError
 
 # OpenFreeMap Liberty style as default
 DEFAULT_STYLE = "https://tiles.openfreemap.org/styles/liberty"
+
+# Validation limits
+MAX_DIMENSION = 4096
+MAX_ZOOM = 24
+MAX_PITCH = 85
 
 
 class Map:
@@ -47,15 +53,29 @@ class Map:
         Create a new map renderer.
 
         Args:
-            width: Image width in pixels
-            height: Image height in pixels
+            width: Image width in pixels (1-4096)
+            height: Image height in pixels (1-4096)
             request_handler: Optional function to handle custom tile requests.
                            Receives a request object with 'url' and 'method' attributes.
                            Should return bytes or None for 404.
+                           NOTE: Not yet implemented, will emit FutureWarning.
             pixel_ratio: Pixel ratio for high-DPI rendering (default 1.0)
         """
         if width <= 0 or height <= 0:
             raise MlnativeError(f"Width and height must be positive, got {width}x{height}")
+
+        if width > MAX_DIMENSION or height > MAX_DIMENSION:
+            raise MlnativeError(
+                f"Width and height must be <= {MAX_DIMENSION}, got {width}x{height}"
+            )
+
+        if request_handler is not None:
+            warnings.warn(
+                "request_handler is not yet implemented and will be ignored. "
+                "This feature is planned for a future release.",
+                FutureWarning,
+                stacklevel=2,
+            )
 
         self.width = width
         self.height = height
@@ -101,21 +121,23 @@ class Map:
         else:
             raise MlnativeError(f"Style must be str, dict, or Path, got {type(style)}")
 
-    def render(self, center: list, zoom: float, bearing: float = 0, pitch: float = 0) -> bytes:
+    def render(
+        self, center: list[float], zoom: float, bearing: float = 0, pitch: float = 0
+    ) -> bytes:
         """
         Render the map to PNG bytes.
 
         Args:
             center: [longitude, latitude] of map center
-            zoom: Zoom level (typically 0-22)
-            bearing: Rotation in degrees (default 0)
-            pitch: Tilt in degrees (default 0)
+            zoom: Zoom level (0-24)
+            bearing: Rotation in degrees (default 0, normalized to 0-360)
+            pitch: Tilt in degrees (0-85, default 0)
 
         Returns:
             PNG image bytes
 
         Raises:
-            MlnativeError: If rendering fails
+            MlnativeError: If rendering fails or parameters are invalid
         """
         if self._closed:
             raise MlnativeError("Map has been closed")
@@ -124,8 +146,26 @@ class Map:
             # Use default OpenFreeMap Liberty style
             self._style = DEFAULT_STYLE
 
+        # Validate center
         if len(center) != 2:
-            raise MlnativeError(f"Center must be [lon, lat], got {center}")
+            raise MlnativeError(f"Center must be [longitude, latitude], got {center}")
+
+        lon, lat = center
+        if not (-180 <= lon <= 180):
+            raise MlnativeError(f"Longitude must be -180 to 180, got {lon}")
+        if not (-90 <= lat <= 90):
+            raise MlnativeError(f"Latitude must be -90 to 90, got {lat}")
+
+        # Validate zoom
+        if not (0 <= zoom <= MAX_ZOOM):
+            raise MlnativeError(f"Zoom must be 0-{MAX_ZOOM}, got {zoom}")
+
+        # Validate pitch
+        if not (0 <= pitch <= MAX_PITCH):
+            raise MlnativeError(f"Pitch must be 0-{MAX_PITCH}, got {pitch}")
+
+        # Normalize bearing to 0-360
+        bearing = bearing % 360
 
         config = {
             "width": self.width,

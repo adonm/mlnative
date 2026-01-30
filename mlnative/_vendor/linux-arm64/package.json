@@ -1,5 +1,7 @@
 {
-  "name": "mlnative-vendor-linux-arm64",
+  "name": "mlnative-vendor",
   "version": "0.1.0",
-  "description": "Pre-built maplibre-gl-native for linux-arm64"
+  "dependencies": {
+    "@maplibre/maplibre-gl-native": "^6.3.0"
+  }
 }

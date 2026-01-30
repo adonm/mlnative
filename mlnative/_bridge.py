@@ -1,18 +1,18 @@
 """
-Bridge to Bun/JavaScript renderer.
+Bridge to JavaScript renderer.
 
-Handles subprocess communication with the bundled JS renderer.
+Handles subprocess communication with the JS renderer.
+Uses Node.js when available (required for native modules), falls back to Bun.
 """
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
-
-import pybun
 
 from .exceptions import MlnativeError
 
@@ -58,7 +58,53 @@ def get_vendor_dir() -> Path:
             f"Supported platforms: darwin-arm64, darwin-x64, linux-arm64, linux-x64, win32-x64"
         )
 
+    # Check that node_modules is actually installed
+    node_modules = vendor_dir / "node_modules" / "@maplibre" / "maplibre-gl-native"
+    if not node_modules.exists():
+        raise MlnativeError(
+            f"Native binaries not installed for {vendor_name}.\n\n"
+            f"To fix, run:\n"
+            f"  cd {vendor_dir} && npm install\n\n"
+            f"Or if using pip, try reinstalling:\n"
+            f"  pip install --force-reinstall mlnative"
+        )
+
     return vendor_dir
+
+
+def _get_js_runtime() -> str:
+    """
+    Get path to JavaScript runtime.
+
+    Prefers Node.js (required for native modules like maplibre-gl-native),
+    falls back to bundled Bun from pybun package.
+    """
+    # First, try to find node in PATH (required for native modules)
+    node_path = shutil.which("node")
+    if node_path:
+        return node_path
+
+    # Fall back to bundled bun from pybun
+    # Note: Bun may not work with all native modules due to V8/JSC differences
+    try:
+        import pybun
+
+        pybun_file = pybun.__file__
+        if pybun_file:
+            bun_path = Path(pybun_file).parent / "bun"
+            if bun_path.exists():
+                return str(bun_path)
+    except ImportError:
+        pass
+
+    raise MlnativeError(
+        "No JavaScript runtime found.\n\n"
+        "Install Node.js (recommended for native module compatibility):\n"
+        "  - macOS: brew install node\n"
+        "  - Linux: apt install nodejs or use nvm\n"
+        "  - Windows: https://nodejs.org/\n\n"
+        "Or install pybun: pip install pybun"
+    )
 
 
 def _validate_png_output(stdout: bytes) -> bytes:
@@ -73,16 +119,16 @@ def _validate_png_output(stdout: bytes) -> bytes:
     return stdout
 
 
-def _run_bun_process(
-    bun_path: str, renderer_js: Path, config: dict[str, Any], vendor_dir: Path
+def _run_js_process(
+    runtime_path: str, renderer_js: Path, config: dict[str, Any], vendor_dir: Path
 ) -> bytes:
-    """Execute Bun subprocess and return output."""
+    """Execute JavaScript subprocess and return output."""
     env = os.environ.copy()
     env["MLNATIVE_VENDOR_DIR"] = str(vendor_dir)
 
     try:
         result = subprocess.run(
-            [bun_path, str(renderer_js)],
+            [runtime_path, str(renderer_js)],
             input=json.dumps(config).encode("utf-8"),
             capture_output=True,
             env=env,
@@ -92,11 +138,11 @@ def _run_bun_process(
         raise MlnativeError("Render timeout (60s exceeded)") from None
     except subprocess.CalledProcessError as e:
         stderr = e.stderr.decode("utf-8", errors="replace") if e.stderr else "Unknown error"
-        raise MlnativeError(f"Bun process failed:\n{stderr}") from e
+        raise MlnativeError(f"JS process failed:\n{stderr}") from e
 
     if result.returncode != 0:
         stderr = result.stderr.decode("utf-8", errors="replace")
-        raise MlnativeError(f"Bun render failed:\n{stderr}")
+        raise MlnativeError(f"Render failed:\n{stderr}")
 
     return result.stdout
 
@@ -105,7 +151,7 @@ def render_with_bun(
     config: dict[str, Any], request_handler: Callable[[Any], bytes] | None = None
 ) -> bytes:
     """
-    Render map using Bun subprocess.
+    Render map using JavaScript subprocess.
 
     Args:
         config: Map configuration dict
@@ -123,11 +169,10 @@ def render_with_bun(
     if not renderer_js.exists():
         raise MlnativeError(f"Renderer script not found: {renderer_js}")
 
-    # Get bun path from pybun package (bundled binary)
-    bun_path = str(Path(pybun.__file__).parent / "bun")
+    runtime_path = _get_js_runtime()
 
     # Flag for custom handler (JS side uses temp file protocol)
     config["_hasCustomHandler"] = request_handler is not None
 
-    stdout = _run_bun_process(bun_path, renderer_js, config, vendor_dir)
+    stdout = _run_js_process(runtime_path, renderer_js, config, vendor_dir)
     return _validate_png_output(stdout)
