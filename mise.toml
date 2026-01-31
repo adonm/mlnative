@@ -1,8 +1,0 @@
-[tools]
-uv = "latest"
-just = "latest"
-bun = "latest"
-
-[env]
-UV_PYTHON = "3.12"
-PYTHONPATH = "{{config_root}}/mlnative"

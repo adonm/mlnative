@@ -1,13 +1,11 @@
 """
 Main Map class for mlnative.
 
-Grug principles:
-- One simple class, 4 methods max
-- Synchronous by default
-- Return PNG bytes (no PIL)
-- Context manager support
+Uses native Rust renderer with statically linked MapLibre Native.
+Provides synchronous and async APIs for static map rendering.
 """
 
+import asyncio
 import json
 import warnings
 from collections.abc import Callable
@@ -15,7 +13,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from ._bridge import render_with_bun
+from ._bridge import RenderDaemon
 from .exceptions import MlnativeError
 
 # OpenFreeMap Liberty style as default
@@ -29,7 +27,7 @@ MAX_PITCH = 85
 
 class Map:
     """
-    A MapLibre GL Native map renderer.
+    A MapLibre GL Native map renderer using native Rust backend.
 
     Simple usage:
         map = Map(512, 512)
@@ -40,6 +38,16 @@ class Map:
         with Map(512, 512) as map:
             map.load_style("style.json")
             png_bytes = map.render(center=[0, 0], zoom=5)
+
+    Batch rendering (efficient):
+        with Map(512, 512) as map:
+            map.load_style("style.json")
+            views = [
+                {"center": [0, 0], "zoom": 5},
+                {"center": [10, 10], "zoom": 8},
+                # ... more views
+            ]
+            pngs = map.render_batch(views)
     """
 
     def __init__(
@@ -56,9 +64,7 @@ class Map:
             width: Image width in pixels (1-4096)
             height: Image height in pixels (1-4096)
             request_handler: Optional function to handle custom tile requests.
-                           Receives a request object with 'url' and 'method' attributes.
-                           Should return bytes or None for 404.
-                           NOTE: Not yet implemented, will emit FutureWarning.
+                           Not yet implemented.
             pixel_ratio: Pixel ratio for high-DPI rendering (default 1.0)
         """
         if width <= 0 or height <= 0:
@@ -79,10 +85,29 @@ class Map:
 
         self.width = width
         self.height = height
-        self.request_handler = request_handler
         self.pixel_ratio = pixel_ratio
         self._style: str | dict[str, Any] | None = None
+        self._daemon: RenderDaemon | None = None
         self._closed = False
+
+    def _get_daemon(self) -> RenderDaemon:
+        """Get or create the render daemon."""
+        if self._daemon is None:
+            self._daemon = RenderDaemon()
+            
+            # Get style string
+            style = self._style
+            if style is None:
+                style = DEFAULT_STYLE
+            
+            if isinstance(style, dict):
+                style = json.dumps(style)
+            elif isinstance(style, Path):
+                style = json.dumps(json.loads(style.read_text()))
+            
+            self._daemon.start(self.width, self.height, str(style))
+        
+        return self._daemon
 
     def load_style(self, style: str | dict[str, Any] | Path) -> None:
         """
@@ -120,6 +145,11 @@ class Map:
                 raise MlnativeError(f"Unsupported style format: {style}")
         else:
             raise MlnativeError(f"Style must be str, dict, or Path, got {type(style)}")
+        
+        # Reset daemon so it picks up new style
+        if self._daemon is not None:
+            self._daemon.stop()
+            self._daemon = None
 
     def render(
         self, center: list[float], zoom: float, bearing: float = 0, pitch: float = 0
@@ -167,25 +197,83 @@ class Map:
         # Normalize bearing to 0-360
         bearing = bearing % 360
 
-        config = {
-            "width": self.width,
-            "height": self.height,
-            "center": center,
-            "zoom": zoom,
-            "bearing": bearing,
-            "pitch": pitch,
-            "pixelRatio": self.pixel_ratio,
-            "style": self._style,
-        }
-
         try:
-            png_bytes = render_with_bun(config, self.request_handler)
-            return png_bytes
+            daemon = self._get_daemon()
+            return daemon.render(center, zoom, bearing, pitch)
         except Exception as e:
             raise MlnativeError(f"Render failed: {e}") from e
 
+    def render_batch(self, views: list[dict[str, Any]]) -> list[bytes]:
+        """
+        Render multiple map views efficiently.
+
+        This is much faster than calling render() multiple times because
+        the renderer process stays alive and reuses the loaded style.
+
+        Args:
+            views: List of view dictionaries, each with keys:
+                   - center: [longitude, latitude]
+                   - zoom: float
+                   - bearing: float (optional, default 0)
+                   - pitch: float (optional, default 0)
+
+        Returns:
+            List of PNG image bytes
+
+        Example:
+            views = [
+                {"center": [0, 0], "zoom": 5},
+                {"center": [10, 10], "zoom": 8, "bearing": 45},
+            ]
+            pngs = map.render_batch(views)
+        """
+        if self._closed:
+            raise MlnativeError("Map has been closed")
+
+        if self._style is None:
+            self._style = DEFAULT_STYLE
+
+        # Validate and normalize views
+        normalized_views = []
+        for i, view in enumerate(views):
+            center = view.get("center")
+            if not center or len(center) != 2:
+                raise MlnativeError(f"View {i}: Invalid center")
+            
+            lon, lat = center
+            if not (-180 <= lon <= 180):
+                raise MlnativeError(f"View {i}: Longitude must be -180 to 180")
+            if not (-90 <= lat <= 90):
+                raise MlnativeError(f"View {i}: Latitude must be -90 to 90")
+
+            zoom = view.get("zoom", 0)
+            if not (0 <= zoom <= MAX_ZOOM):
+                raise MlnativeError(f"View {i}: Zoom must be 0-{MAX_ZOOM}")
+
+            pitch = view.get("pitch", 0)
+            if not (0 <= pitch <= MAX_PITCH):
+                raise MlnativeError(f"View {i}: Pitch must be 0-{MAX_PITCH}")
+
+            bearing = view.get("bearing", 0) % 360
+
+            normalized_views.append({
+                "center": center,
+                "zoom": zoom,
+                "bearing": bearing,
+                "pitch": pitch,
+            })
+
+        try:
+            daemon = self._get_daemon()
+            return daemon.render_batch(normalized_views)
+        except Exception as e:
+            raise MlnativeError(f"Batch render failed: {e}") from e
+
     def close(self) -> None:
         """Close the map and release resources."""
+        if self._daemon is not None:
+            self._daemon.stop()
+            self._daemon = None
         self._closed = True
         self._style = None
 

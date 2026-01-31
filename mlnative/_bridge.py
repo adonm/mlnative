@@ -1,16 +1,14 @@
 """
-Bridge to JavaScript renderer.
+Bridge to Rust rendering daemon.
 
-Handles subprocess communication with the JS renderer.
-Uses Node.js when available (required for native modules), falls back to Bun.
+Handles subprocess communication with the native renderer.
+Uses pre-built Rust binaries with statically linked MapLibre Native.
 """
 
 import json
 import os
-import shutil
 import subprocess
 import sys
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -46,133 +44,156 @@ def _get_platform_info() -> tuple[str, str]:
     return platform_name, arch
 
 
-def get_vendor_dir() -> Path:
-    """Get the platform-specific vendor directory with bundled node_modules."""
+def get_binary_path() -> Path:
+    """Get the path to the native renderer binary."""
     platform_name, arch = _get_platform_info()
-    vendor_name = f"{platform_name}-{arch}"
-    vendor_dir = Path(__file__).parent / "_vendor" / vendor_name
-
-    if not vendor_dir.exists():
-        raise MlnativeError(
-            f"No bundled binaries for {vendor_name}. "
-            f"Supported platforms: darwin-arm64, darwin-x64, linux-arm64, linux-x64, win32-x64"
-        )
-
-    # Check that node_modules is actually installed
-    node_modules = vendor_dir / "node_modules" / "@maplibre" / "maplibre-gl-native"
-    if not node_modules.exists():
-        raise MlnativeError(
-            f"Native binaries not installed for {vendor_name}.\n\n"
-            f"To fix, run:\n"
-            f"  cd {vendor_dir} && npm install\n\n"
-            f"Or if using pip, try reinstalling:\n"
-            f"  pip install --force-reinstall mlnative"
-        )
-
-    return vendor_dir
-
-
-def _get_js_runtime() -> str:
-    """
-    Get path to JavaScript runtime.
-
-    Prefers Node.js (required for native modules like maplibre-gl-native),
-    falls back to bundled Bun from pybun package.
-    """
-    # First, try to find node in PATH (required for native modules)
-    node_path = shutil.which("node")
-    if node_path:
-        return node_path
-
-    # Fall back to bundled bun from pybun
-    # Note: Bun may not work with all native modules due to V8/JSC differences
-    try:
-        import pybun
-
-        pybun_file = pybun.__file__
-        if pybun_file:
-            bun_path = Path(pybun_file).parent / "bun"
-            if bun_path.exists():
-                return str(bun_path)
-    except ImportError:
-        pass
-
+    binary_name = f"mlnative-render-{platform_name}-{arch}"
+    
+    if sys.platform == "win32":
+        binary_name += ".exe"
+    
+    # Check in package directory
+    pkg_dir = Path(__file__).parent
+    binary_path = pkg_dir / "bin" / binary_name
+    
+    if binary_path.exists():
+        return binary_path
+    
+    # Check in PATH
+    for path_dir in os.environ.get("PATH", "").split(os.pathsep):
+        path = Path(path_dir) / binary_name
+        if path.exists():
+            return path
+    
     raise MlnativeError(
-        "No JavaScript runtime found.\n\n"
-        "Install Node.js (recommended for native module compatibility):\n"
-        "  - macOS: brew install node\n"
-        "  - Linux: apt install nodejs or use nvm\n"
-        "  - Windows: https://nodejs.org/\n\n"
-        "Or install pybun: pip install pybun"
+        f"Native renderer binary not found: {binary_name}\n"
+        f"Please install with: pip install mlnative-binary"
     )
 
 
-def _validate_png_output(stdout: bytes) -> bytes:
-    """Validate that output is valid PNG bytes."""
-    if not stdout.startswith(b"\x89PNG"):
-        # Might be an error message
+class RenderDaemon:
+    """Persistent daemon process for batch rendering."""
+    
+    def __init__(self):
+        self._process: subprocess.Popen | None = None
+        self._initialized = False
+    
+    def start(self, width: int, height: int, style: str) -> None:
+        """Start the daemon and initialize the renderer."""
+        if self._process is not None:
+            raise MlnativeError("Daemon already started")
+        
+        binary_path = get_binary_path()
+        
         try:
-            error_msg = stdout.decode("utf-8", errors="replace")
-            raise MlnativeError(f"Render error: {error_msg}")
-        except UnicodeDecodeError:
-            raise MlnativeError("Render failed: output is not valid PNG") from None
-    return stdout
-
-
-def _run_js_process(
-    runtime_path: str, renderer_js: Path, config: dict[str, Any], vendor_dir: Path
-) -> bytes:
-    """Execute JavaScript subprocess and return output."""
-    env = os.environ.copy()
-    env["MLNATIVE_VENDOR_DIR"] = str(vendor_dir)
-
-    try:
-        result = subprocess.run(
-            [runtime_path, str(renderer_js)],
-            input=json.dumps(config).encode("utf-8"),
-            capture_output=True,
-            env=env,
-            timeout=60,
-        )
-    except subprocess.TimeoutExpired:
-        raise MlnativeError("Render timeout (60s exceeded)") from None
-    except subprocess.CalledProcessError as e:
-        stderr = e.stderr.decode("utf-8", errors="replace") if e.stderr else "Unknown error"
-        raise MlnativeError(f"JS process failed:\n{stderr}") from e
-
-    if result.returncode != 0:
-        stderr = result.stderr.decode("utf-8", errors="replace")
-        raise MlnativeError(f"Render failed:\n{stderr}")
-
-    return result.stdout
-
-
-def render_with_bun(
-    config: dict[str, Any], request_handler: Callable[[Any], bytes] | None = None
-) -> bytes:
-    """
-    Render map using JavaScript subprocess.
-
-    Args:
-        config: Map configuration dict
-        request_handler: Optional custom request handler
-
-    Returns:
-        PNG image bytes
-
-    Raises:
-        MlnativeError: If rendering fails
-    """
-    vendor_dir = get_vendor_dir()
-    renderer_js = Path(__file__).parent / "_renderer.js"
-
-    if not renderer_js.exists():
-        raise MlnativeError(f"Renderer script not found: {renderer_js}")
-
-    runtime_path = _get_js_runtime()
-
-    # Flag for custom handler (JS side uses temp file protocol)
-    config["_hasCustomHandler"] = request_handler is not None
-
-    stdout = _run_js_process(runtime_path, renderer_js, config, vendor_dir)
-    return _validate_png_output(stdout)
+            self._process = subprocess.Popen(
+                [str(binary_path)],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1,
+            )
+        except OSError as e:
+            raise MlnativeError(f"Failed to start renderer: {e}") from e
+        
+        # Initialize
+        init_cmd = {
+            "cmd": "init",
+            "width": width,
+            "height": height,
+            "style": style,
+        }
+        
+        response = self._send_command(init_cmd)
+        if response.get("status") != "ok":
+            self.stop()
+            raise MlnativeError(f"Failed to initialize renderer: {response.get('error')}")
+        
+        self._initialized = True
+    
+    def _send_command(self, cmd: dict[str, Any]) -> dict[str, Any]:
+        """Send a command to the daemon and get response."""
+        if self._process is None or self._process.stdin is None or self._process.stdout is None:
+            raise MlnativeError("Daemon not started")
+        
+        # Send command
+        cmd_json = json.dumps(cmd) + "\n"
+        self._process.stdin.write(cmd_json)
+        self._process.stdin.flush()
+        
+        # Read response
+        response_line = self._process.stdout.readline()
+        if not response_line:
+            raise MlnativeError("Renderer process closed unexpectedly")
+        
+        try:
+            return json.loads(response_line)
+        except json.JSONDecodeError as e:
+            raise MlnativeError(f"Invalid response from renderer: {e}") from e
+    
+    def render(self, center: list[float], zoom: float, bearing: float = 0, pitch: float = 0) -> bytes:
+        """Render a single map view."""
+        if not self._initialized:
+            raise MlnativeError("Renderer not initialized")
+        
+        cmd = {
+            "cmd": "render",
+            "center": center,
+            "zoom": zoom,
+            "bearing": bearing,
+            "pitch": pitch,
+        }
+        
+        response = self._send_command(cmd)
+        
+        if response.get("status") != "ok":
+            raise MlnativeError(f"Render failed: {response.get('error')}")
+        
+        import base64
+        png_b64 = response.get("png")
+        if not png_b64:
+            raise MlnativeError("Render returned no image data")
+        
+        return base64.b64decode(png_b64)
+    
+    def render_batch(self, views: list[dict[str, Any]]) -> list[bytes]:
+        """Render multiple views efficiently."""
+        if not self._initialized:
+            raise MlnativeError("Renderer not initialized")
+        
+        cmd = {
+            "cmd": "render_batch",
+            "views": views,
+        }
+        
+        response = self._send_command(cmd)
+        
+        if response.get("status") != "ok":
+            raise MlnativeError(f"Batch render failed: {response.get('error')}")
+        
+        import base64
+        pngs_b64 = response.get("png", "").split(",")
+        return [base64.b64decode(png) for png in pngs_b64 if png]
+    
+    def stop(self) -> None:
+        """Stop the daemon."""
+        if self._process is not None and self._process.poll() is None:
+            try:
+                self._send_command({"cmd": "quit"})
+                self._process.wait(timeout=5)
+            except Exception:
+                self._process.terminate()
+                try:
+                    self._process.wait(timeout=2)
+                except Exception:
+                    self._process.kill()
+        
+        self._process = None
+        self._initialized = False
+    
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.stop()

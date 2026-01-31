@@ -2,20 +2,13 @@
 
 ## Prerequisites
 
-This project uses **mise** for tool management. Install it first:
-- macOS/Linux: `curl https://mise.run | sh`
-- Or see: https://mise.jdx.dev/getting-started.html
-
-**Requirements:** Python 3.12+
+**Requirements:** Python 3.12+, Rust 1.70+
 
 ## Build/Test/Lint Commands
 
 ### Using Just (recommended)
 
 ```bash
-# Install all tools (uv, just, bun) via mise
-just install-tools
-
 # Setup development environment
 just setup
 
@@ -48,7 +41,11 @@ just typecheck
 
 # Build and clean
 just build
+just build-rust    # Build Rust binary only
 just clean
+
+# Build wheels for distribution
+just build-wheels  # All platforms (requires Docker)
 
 # Run examples
 just serve       # FastAPI static maps API
@@ -59,39 +56,16 @@ just example     # Basic usage example
 just stats
 ```
 
-### Interactive Web Test Interface
-
-The web test interface provides a visual way to test the library:
-
-```bash
-just serve-test
-```
-
-Then open http://localhost:8000 to:
-- Build API calls with an interactive form
-- Set parameters (center, zoom, dimensions, style)
-- Enable 2x/HighDPI mode for retina displays
-- See the generated Python code
-- Preview generated map images in real-time
-
-### Using mise + just directly
-
-```bash
-# Run any just command through mise
-mise exec -- just check
-
-# Or activate mise in your shell
-mise activate
-just check
-```
-
-### Legacy: Using uv directly (no mise)
+### Using uv directly
 
 ```bash
 # Setup
 cd /var/home/adonm/dev/maplibre-native/mlnative
 uv venv
 uv pip install -e ".[dev,web]"
+
+# Build Rust binary
+cd rust && cargo build --release
 
 # Run tests
 uv run python -m pytest tests/ -v --tb=short
@@ -142,7 +116,7 @@ uv build
 - `snake_case` for functions/variables
 - `PascalCase` for classes
 - `UPPER_CASE` for constants
-- Private modules: `_bridge.py`, `_renderer.js`
+- Private modules: `_bridge.py`
 - Private functions: `_helper_function()`
 
 ### Error Handling
@@ -160,8 +134,7 @@ uv build
 - Integration tests preferred over unit tests
 - Test class naming: `TestFeature`
 - Use pytest fixtures where appropriate
-- Skip tests gracefully when deps unavailable
-- Run `just test-unit` for quick feedback (skips vendor binary tests)
+- Run `just test-unit` for quick feedback
 
 ## Project Structure
 
@@ -170,10 +143,13 @@ mlnative/
 ├── mlnative/           # Main package
 │   ├── __init__.py     # Public exports
 │   ├── map.py          # Main Map class
-│   ├── _bridge.py      # Bun subprocess wrapper
-│   ├── _renderer.js    # JS renderer
+│   ├── _bridge.py      # Rust subprocess wrapper
 │   ├── exceptions.py   # MlnativeError
-│   └── _vendor/        # Platform binaries
+│   └── bin/            # Platform-specific binaries
+├── rust/               # Rust native renderer
+│   ├── Cargo.toml
+│   └── src/
+│       └── main.rs     # JSON daemon
 ├── examples/           # Usage examples
 │   ├── basic.py        # Simple example
 │   ├── fastapi_server.py       # Static maps API
@@ -183,16 +159,15 @@ mlnative/
 ├── scripts/            # Build helpers
 ├── .github/workflows/  # CI/CD
 ├── Justfile            # Task runner commands
-├── mise.toml           # Tool management (uv, just, bun)
 └── pyproject.toml      # Config (ruff, mypy, deps)
 ```
 
 ## Key Dependencies
 
-- `pybun>=1.3` - Bun runtime
 - `pytest>=8.0` - Testing (dev)
 - `ruff>=0.8.0` - Linting and formatting (dev)
 - `mypy>=1.13.0` - Type checking (dev)
+- `cibuildwheel>=2.16` - Wheel building (dev)
 - `fastapi>=0.115` - Web framework (optional)
 - `uvicorn[standard]>=0.32` - ASGI server (optional)
 - `jinja2>=3.1` - Templating for web UI (optional)
@@ -200,48 +175,79 @@ mlnative/
 
 ## CI/CD Pipeline
 
-All CI jobs use **mise** for tool management and **just** for commands:
+All CI jobs use **GitHub Actions**:
 
 1. **lint job**: `just check` (lint + format-check + typecheck + test-unit)
 2. **test job**: `just test-unit`
-3. **build-vendor job**: `just ci-build-vendor <platform>`
-4. **build-package job**: `just ci-build`
-5. **publish jobs**: PyPA publish action
+3. **build-wheels job**: `cibuildwheel` (Linux, macOS, Windows)
+4. **publish jobs**: PyPA publish action
 
 ## Tool Management
 
-Tools are managed via **mise** (see `mise.toml`):
+Tools are managed manually:
 
-```toml
-[tools]
-uv = "latest"     # Python package manager
-just = "latest"   # Task runner
-bun = "latest"    # JavaScript runtime
-```
+- **uv** - Python package manager (install via `curl -LsSf https://astral.sh/uv/install.sh | sh`)
+- **Rust** - Install via rustup (see https://rustup.rs/)
+- **just** - Task runner (install via `cargo install just` or package manager)
 
-Update tools: `just update-tools`
+Update tools: Check upstream for latest versions
 
 ## Notes
 
 - **Python 3.12+ required** - Uses modern syntax throughout
-- Uses **mise** for tool management (installs uv, just, bun)
-- Uses **just** for task running (see Justfile)
 - Uses **uv** for Python operations (not pip directly)
-- Vendor binaries must be built per-platform (see `just build-vendor`)
+- Uses **just** for task running (see Justfile)
+- Rust binary must be built before testing: `just build-rust`
 - OpenFreeMap Liberty is the default style
 - Returns PNG bytes (not PIL Image objects)
 - Web test interface available at `just serve-test`
 
-## System Library Compatibility
+## Architecture
 
-The native maplibre-gl-native binary requires specific system library versions:
-- libjpeg.so.8
-- ICU 74 (libicuuc.so.74, libicudata.so.74, libicui18n.so.74)
+```
+Python (mlnative) 
+    ↓ JSON over stdin/stdout
+Rust (mlnative-render daemon)
+    ↓ FFI
+MapLibre Native (C++ core)
+    ↓
+Pre-built amalgam libraries (statically linked ICU, jpeg, etc.)
+```
 
-If your system has different versions (e.g., libjpeg-turbo, ICU 77+), integration tests will be automatically skipped. To run full tests:
+The native renderer uses pre-built "amalgam" libraries from MapLibre Native which include all dependencies (ICU, libjpeg, libpng, etc.) statically linked. This eliminates system dependency issues.
 
-1. **Use Docker**: `just test-docker` (recommended)
-2. **Build from source**: Compile maplibre-gl-native against your system's libraries
-3. **Install compatible libraries**: May conflict with system packages
+## Rust Development
 
-Unit tests (validation, error handling) will always run regardless of system libraries.
+### Building the Renderer
+
+```bash
+cd rust
+cargo build --release
+```
+
+The binary will be at `target/release/mlnative-render`.
+
+### Cross-Compilation
+
+The CI builds for multiple platforms:
+- Linux x64 (x86_64-unknown-linux-gnu)
+- Linux ARM64 (aarch64-unknown-linux-gnu)
+- macOS x64 (x86_64-apple-darwin)
+- macOS ARM64 (aarch64-apple-darwin)
+- Windows x64 (x86_64-pc-windows-msvc)
+
+### Communication Protocol
+
+The daemon accepts JSON commands on stdin and outputs JSON responses on stdout.
+
+**Commands:**
+- `init` - Initialize with width, height, style
+- `render` - Render single view
+- `render_batch` - Render multiple views efficiently
+- `quit` - Stop daemon
+
+**Responses:**
+```json
+{"status": "ok", "png": "base64_encoded_data"}
+{"status": "error", "error": "message"}
+```

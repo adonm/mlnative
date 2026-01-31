@@ -1,16 +1,17 @@
 # mlnative ⚠️ ALPHA RELEASE
 
-> **⚠️ Warning: This is an alpha release (v0.1.0-alpha). The API may change significantly. Not recommended for production use.**
+> **⚠️ Warning: This is an alpha release (v0.2.0-alpha). The API may change significantly. Not recommended for production use.**
 
-Simple Python wrapper for MapLibre GL Native using Bun.
+Simple Python wrapper for MapLibre GL Native using a native Rust renderer.
 
 A grug-brained library for rendering static map images with minimal complexity.
 
 ## Features
 
 - **Simple API**: One class, 4 methods, zero confusion
-- **Offline capable**: Bundled native binaries, no runtime dependencies
-- **Fast**: Uses Bun for JavaScript execution
+- **Native Performance**: Rust backend with MapLibre Native C++ core
+- **No Runtime Dependencies**: Bundled native binaries, no system libraries needed
+- **Batch Rendering**: Efficiently render hundreds of maps with one process
 - **Mapbox-compatible**: Easy migration from Mapbox Static Images API
 - **Default OpenFreeMap**: Uses Liberty style from OpenFreeMap by default
 
@@ -20,12 +21,17 @@ A grug-brained library for rendering static map images with minimal complexity.
 pip install mlnative
 ```
 
+Platform-specific wheels include the native renderer binary:
+- Linux x86_64, aarch64
+- macOS x86_64, arm64 (Apple Silicon)
+- Windows x64
+
 ## Quick Start
 
 ```python
 from mlnative import Map
 
-# Render a map
+# Render a single map
 with Map(512, 512) as m:
     m.load_style("https://tiles.openfreemap.org/styles/liberty")
     png_bytes = m.render(center=[-122.4, 37.8], zoom=12)
@@ -41,16 +47,16 @@ with Map(512, 512) as m:
 Create a new map renderer.
 
 **Parameters:**
-- `width`: Image width in pixels
-- `height`: Image height in pixels  
-- `request_handler`: Optional function for custom tile requests
+- `width`: Image width in pixels (1-4096)
+- `height`: Image height in pixels (1-4096)
+- `request_handler`: Optional function for custom tile requests (not yet implemented)
 - `pixel_ratio`: Pixel ratio for high-DPI rendering
 
 ### `load_style(style)`
 
 Load a map style. Accepts:
 - URL string (http/https)
-- File path
+- File path to JSON file
 - Style JSON dict
 
 ### `render(center, zoom, bearing=0, pitch=0)`
@@ -59,11 +65,20 @@ Render the map to PNG bytes.
 
 **Parameters:**
 - `center`: `[longitude, latitude]` list
-- `zoom`: Zoom level (0-22)
+- `zoom`: Zoom level (0-24)
 - `bearing`: Rotation in degrees (0-360)
-- `pitch`: Tilt in degrees (0-60)
+- `pitch`: Tilt in degrees (0-85)
 
 **Returns:** PNG image bytes
+
+### `render_batch(views)`
+
+Render multiple map views efficiently.
+
+**Parameters:**
+- `views`: List of dicts with `center`, `zoom`, `bearing`, `pitch` keys
+
+**Returns:** List of PNG image bytes
 
 ### `close()`
 
@@ -88,17 +103,25 @@ with Map(800, 600) as m:
     open("sf.png", "wb").write(png)
 ```
 
-### Custom Tile Handler
+### Batch Rendering
 
 ```python
-def tile_handler(request):
-    """Handle custom tile requests."""
-    if request.url.startswith("mbtiles://"):
-        # Load from local MBTiles
-        return load_from_mbtiles(request.url)
-    return None  # 404
+from mlnative import Map
 
-map = Map(512, 512, request_handler=tile_handler)
+views = [
+    {"center": [0, 0], "zoom": 1},
+    {"center": [10, 10], "zoom": 5},
+    {"center": [-122.4, 37.8], "zoom": 12},
+    # ... more views
+]
+
+with Map(512, 512) as m:
+    m.load_style("https://tiles.openfreemap.org/styles/liberty")
+    pngs = m.render_batch(views)
+    
+    for i, png in enumerate(pngs):
+        with open(f"map_{i}.png", "wb") as f:
+            f.write(png)
 ```
 
 ### FastAPI Server
@@ -115,21 +138,55 @@ http://localhost:8000/static/-122.4194,37.7749,12/512x512.png
 
 ## Supported Platforms
 
-- Linux x64, arm64
-- macOS x64, arm64 (Apple Silicon)
+- Linux x86_64, aarch64
+- macOS x86_64, arm64 (Apple Silicon)
 - Windows x64
+
+## Architecture
+
+```
+Python (mlnative) 
+    ↓ JSON
+Rust (mlnative-render daemon)
+    ↓ FFI
+MapLibre Native (C++ core with statically linked dependencies)
+```
+
+The native renderer uses pre-built "amalgam" libraries from MapLibre Native which include all dependencies (ICU, libjpeg, etc.) statically linked. This eliminates system dependency issues.
 
 ## Development
 
+### Prerequisites
+
+- Python 3.12+
+- Rust toolchain (1.70+)
+- uv (Python package manager)
+
+### Setup
+
 ```bash
-# Install dev dependencies
-pip install -e ".[dev,web]"
+# Install Python dependencies
+uv venv
+uv pip install -e ".[dev,web]"
 
-# Run tests
-pytest tests/
+# Build Rust binary
+cd rust && cargo build --release
+```
 
-# Build vendor bundles
-./scripts/build-vendor.sh
+### Run Tests
+
+```bash
+just test
+```
+
+### Build Wheels
+
+```bash
+# Local wheel (current platform only)
+uv build
+
+# All platforms (requires Docker)
+just build-wheels
 ```
 
 ## License
