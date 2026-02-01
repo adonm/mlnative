@@ -114,6 +114,9 @@ jobs:
           install: true
           cache: true
 
+      - name: Setup project
+        run: just ci-setup
+
       - name: Download binary
         uses: actions/download-artifact@v4
         with:
@@ -141,6 +144,9 @@ jobs:
         with:
           install: true
           cache: true
+
+      - name: Setup project
+        run: just ci-setup
 
       - name: Setup project
         run: just ci-setup
