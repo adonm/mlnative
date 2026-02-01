@@ -74,7 +74,7 @@ def get_binary_path() -> Path:
 class RenderDaemon:
     """Persistent daemon process for batch rendering."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._process: subprocess.Popen | None = None
         self._initialized = False
 
@@ -128,7 +128,8 @@ class RenderDaemon:
             raise MlnativeError("Renderer process closed unexpectedly")
 
         try:
-            return json.loads(response_line)
+            result: dict[str, Any] = json.loads(response_line)
+            return result
         except json.JSONDecodeError as e:
             raise MlnativeError(f"Invalid response from renderer: {e}") from e
 
@@ -196,8 +197,13 @@ class RenderDaemon:
         self._process = None
         self._initialized = False
 
-    def __enter__(self):
+    def __enter__(self) -> "RenderDaemon":
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: Any,
+    ) -> None:
         self.stop()
