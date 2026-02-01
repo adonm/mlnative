@@ -61,3 +61,5 @@ uv.lock
 
 # Symlinks for testing
 lib_symlinks/
+rust/target/
+mlnative/bin/*
