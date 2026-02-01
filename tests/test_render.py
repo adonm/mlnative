@@ -33,11 +33,7 @@ class TestMap:
 
     def test_map_with_style_url(self):
         """Test creating map with style URL."""
-        m = Map(
-            width=512,
-            height=512,
-            style="https://demotiles.maplibre.org/style.json"
-        )
+        m = Map(width=512, height=512, style="https://demotiles.maplibre.org/style.json")
         assert m.style == "https://demotiles.maplibre.org/style.json"
 
     def test_map_invalid_zoom(self):
@@ -60,16 +56,16 @@ class TestValidation:
         """Test that invalid dimensions raise errors."""
         with pytest.raises(ValueError):
             Map(width=0, height=512)
-        
+
         with pytest.raises(ValueError):
             Map(width=512, height=0)
-        
+
         with pytest.raises(ValueError):
             Map(width=-100, height=512)
 
     def test_render_parameter_validation(self):
         """Test render parameter validation."""
         m = Map(width=512, height=512)
-        
+
         with pytest.raises(MlnativeError):
             m.render(center=[0, 100], zoom=10)  # latitude out of range
