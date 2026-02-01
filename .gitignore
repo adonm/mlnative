@@ -1,3 +1,6 @@
+# Ignore all binaries but keep directory
+mlnative/bin/*
+!mlnative/bin/README.md
 # Python
 __pycache__/
 *.py[cod]
