@@ -58,10 +58,12 @@ jobs:
             platform: linux-x64
           - os: ubuntu-24.04-arm
             platform: linux-arm64
-          - os: macos-15
-            platform: darwin-arm64
-          - os: macos-15-large
-            platform: darwin-x64
+          # macOS builds disabled - maplibre_native crate linking issues on macOS
+          # See: https://github.com/adonm/mlnative/issues
+          # - os: macos-15
+          #   platform: darwin-arm64
+          # - os: macos-15-large
+          #   platform: darwin-x64
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
 
     steps:
