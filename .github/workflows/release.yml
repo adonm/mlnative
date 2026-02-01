@@ -171,12 +171,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download all artifacts
+      - name: Download wheel artifacts
         uses: actions/download-artifact@v4
         with:
           path: dist
-          pattern: "wheel-*|sdist"
+          pattern: "wheel-*"
           merge-multiple: true
+
+      - name: Download sdist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: sdist
+          path: dist
 
       - name: List artifacts
         run: ls -lh dist/
@@ -202,12 +208,18 @@ jobs:
       id-token: write
 
     steps:
-      - name: Download all artifacts
+      - name: Download wheel artifacts
         uses: actions/download-artifact@v4
         with:
           path: dist
-          pattern: "wheel-*|sdist"
+          pattern: "wheel-*"
           merge-multiple: true
+
+      - name: Download sdist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: sdist
+          path: dist
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
