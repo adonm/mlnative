@@ -20,7 +20,10 @@ jobs:
         with:
           install: true
           cache: true
-      
+
+      - name: Setup project
+        run: just ci-setup
+
       - name: Run all checks
         run: just check
 
@@ -36,7 +39,10 @@ jobs:
         with:
           install: true
           cache: true
-      
+
+      - name: Setup project
+        run: just ci-setup
+
       - name: Run unit tests
         run: just test-unit
 
