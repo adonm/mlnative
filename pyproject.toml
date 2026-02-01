@@ -50,6 +50,31 @@ packages = ["mlnative"]
 # Include platform-specific binaries
 artifacts = ["mlnative/bin/*"]
 
+[tool.hatch.build.targets.sdist]
+# Only include necessary files for building from source
+include = [
+    "/mlnative",
+    "/rust/src",
+    "/rust/Cargo.toml",
+    "/rust/Cargo.lock",
+    "/rust/README.md",
+    "/README.md",
+    "/LICENSE",
+    "/pyproject.toml",
+]
+exclude = [
+    "/rust/target",
+    "/.github",
+    "/tests",
+    "/examples",
+    "/scripts",
+    "/.mise.toml",
+    "/Justfile",
+    "/Dockerfile.test",
+    "/AGENTS.md",
+    "/test_rust_backend.py",
+]
+
 [tool.cibuildwheel]
 # Build for Python 3.12+
 build = "cp312-* cp313-*"
