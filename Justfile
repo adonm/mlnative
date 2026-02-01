@@ -72,6 +72,55 @@ clean:
     find . -type f -name "*.pyc" -delete
     cd rust && cargo clean 2>/dev/null || true
 
+# CI: Build binary for current platform
+# Usage: just ci-build-binary <platform>
+# Platform format: linux-x64, darwin-arm64, win32-x64, etc.
+ci-build-binary PLATFORM:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Building binary for {{PLATFORM}}..."
+    cd rust && cargo build --release
+    mkdir -p ../mlnative/bin
+    if [[ "{{PLATFORM}}" == win32-* ]]; then
+        cp target/release/mlnative-render.exe ../mlnative/bin/mlnative-render-{{PLATFORM}}.exe
+    else
+        cp target/release/mlnative-render ../mlnative/bin/mlnative-render-{{PLATFORM}}
+        chmod +x ../mlnative/bin/mlnative-render-{{PLATFORM}}
+    fi
+    echo "✓ Binary built: mlnative/bin/mlnative-render-{{PLATFORM}}"
+
+# CI: Build platform wheel with binary
+# Usage: just ci-build-wheel <platform>
+ci-build-wheel PLATFORM:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Building wheel for {{PLATFORM}}..."
+    uv pip install build
+    python -m build --wheel
+    # Rename wheel with correct platform tag
+    python3 << EOF
+    import os
+    import glob
+    
+    platform_map = {
+        "linux-x64": "manylinux_2_28_x86_64",
+        "darwin-x64": "macosx_10_12_x86_64",
+        "darwin-arm64": "macosx_11_0_arm64",
+        "win32-x64": "win_amd64"
+    }
+    tag = platform_map.get("{{PLATFORM}}", "any")
+    
+    for wheel in glob.glob("dist/*.whl"):
+        new_name = wheel.replace("-any.whl", f"-{tag}.whl")
+        os.rename(wheel, new_name)
+        print(f"Created: {new_name}")
+    EOF
+
+# CI: Build source distribution
+ci-build-sdist:
+    uv pip install build
+    python -m build --sdist
+
 # Run FastAPI example server
 serve:
     uv run python examples/fastapi_server.py

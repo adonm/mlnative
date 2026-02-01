@@ -4,6 +4,38 @@
 
 **Requirements:** Python 3.12+, Rust 1.70+
 
+## Development Philosophy
+
+**CI should orchestrate Just recipes.** This project follows the principle that:
+- Local development and CI should use the **same commands**
+- CI workflows call `just` recipes (defined in `Justfile`)
+- Tools are managed by **mise** (defined in `.mise.toml`)
+- Build logic lives in `Justfile`, not in `.github/workflows/`
+
+This ensures reproducibility and makes it easy to test CI steps locally.
+
+## Tool Management
+
+### Using mise (recommended)
+
+[mise](https://mise.jdx.dev/) manages all development tools:
+
+```bash
+# Install tools specified in .mise.toml
+mise install
+
+# Run tasks defined in mise.toml
+mise run setup
+mise run test
+mise run lint
+```
+
+### Tool Versions
+
+Tools are pinned in `.mise.toml`:
+- Python 3.12
+- Rust (latest stable)
+
 ## Build/Test/Lint Commands
 
 ### Using Just (recommended)
@@ -60,6 +92,11 @@ just example     # Basic usage example
 
 # Show code stats
 just stats
+
+# CI-specific commands (used by GitHub Actions)
+just ci-build-binary <platform>  # Build binary for specific platform
+just ci-build-wheel <platform>   # Build wheel for specific platform
+just ci-build-sdist              # Build source distribution
 ```
 
 ### Using uv directly

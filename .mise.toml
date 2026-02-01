@@ -1,0 +1,16 @@
+[tools]
+python = "3.12"
+rust = "latest"
+
+[env]
+PYTHONPATH = "{{config_root}}"
+
+[tasks]
+setup = "just setup"
+test = "just test"
+lint = "just lint"
+format = "just format"
+typecheck = "just typecheck"
+check = "just check"
+build = "just build"
+clean = "just clean"
