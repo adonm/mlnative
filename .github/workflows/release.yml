@@ -58,23 +58,33 @@ jobs:
       - name: Run unit tests
         run: pytest tests/ -v --tb=short -k "Validation"
 
-  build-wheels:
-    name: Build wheels on ${{ matrix.os }}
+  build-binary:
+    name: Build binary ${{ matrix.platform }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            platform: linux-x64
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-latest
+            platform: linux-arm64
+            target: aarch64-unknown-linux-gnu
+          - os: macos-latest
+            platform: darwin-arm64
+            target: aarch64-apple-darwin
+          - os: macos-13
+            platform: darwin-x64
+            target: x86_64-apple-darwin
+          - os: windows-latest
+            platform: win32-x64
+            target: x86_64-pc-windows-msvc
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install Rust (Linux/macOS)
+      - name: Install Rust
         if: runner.os != 'Windows'
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
@@ -84,28 +94,104 @@ jobs:
         if: runner.os == 'Windows'
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install cibuildwheel
-        run: pip install cibuildwheel
+      - name: Add Rust target (cross-compile)
+        if: matrix.target != ''
+        run: |
+          rustup target add ${{ matrix.target }}
+        shell: bash
 
-      - name: Build wheels
-        run: cibuildwheel --output-dir wheelhouse
-        env:
-          CIBW_BUILD: "cp312-* cp313-*"
-          CIBW_SKIP: "*-win32 *-manylinux_i686 *-musllinux_*"
-          CIBW_TEST_COMMAND: "python -c 'from mlnative import Map; print(\"Import OK\")'"
-          CIBW_BEFORE_ALL_LINUX: |
-            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-            export PATH="$HOME/.cargo/bin:$PATH"
-          CIBW_ENVIRONMENT_LINUX: "PATH=$HOME/.cargo/bin:$PATH"
-          CIBW_BEFORE_ALL_MACOS: |
-            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-          CIBW_ENVIRONMENT_MACOS: "PATH=$HOME/.cargo/bin:$PATH"
+      - name: Build Rust binary
+        run: |
+          cd rust
+          cargo build --release --target ${{ matrix.target }}
+        shell: bash
 
-      - name: Upload wheels
+      - name: Prepare binary (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p mlnative/bin
+          cp rust/target/${{ matrix.target }}/release/mlnative-render mlnative/bin/mlnative-render-${{ matrix.platform }}
+          chmod +x mlnative/bin/mlnative-render-${{ matrix.platform }}
+
+      - name: Prepare binary (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          mkdir -p mlnative/bin
+          copy rust\target\${{ matrix.target }}\release\mlnative-render.exe mlnative\bin\mlnative-render-${{ matrix.platform }}.exe
+
+      - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
-          name: wheels-${{ matrix.os }}
-          path: ./wheelhouse/*.whl
+          name: binary-${{ matrix.platform }}
+          path: mlnative/bin/*
+
+  build-wheels:
+    name: Build platform wheels
+    needs: build-binary
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    strategy:
+      matrix:
+        platform: [linux-x64, linux-arm64, darwin-x64, darwin-arm64, win32-x64]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Download binary
+        uses: actions/download-artifact@v4
+        with:
+          name: binary-${{ matrix.platform }}
+          path: mlnative/bin/
+
+      - name: Install build dependencies
+        run: pip install build
+
+      - name: Build platform-specific wheel
+        run: |
+          # Create platform-specific wheel
+          python -m build --wheel
+          
+          # Rename wheel with correct platform tag
+          python << 'EOF'
+          import os
+          import glob
+          import platform
+          
+          wheel_dir = "dist"
+          wheels = glob.glob(f"{wheel_dir}/*.whl")
+          
+          if not wheels:
+              print("No wheels found!")
+              exit(1)
+          
+          for wheel in wheels:
+              # Get platform tag
+              platform_tag = "${{ matrix.platform }}"
+              platform_map = {
+                  "linux-x64": "manylinux_2_28_x86_64",
+                  "linux-arm64": "manylinux_2_28_aarch64", 
+                  "darwin-x64": "macosx_10_12_x86_64",
+                  "darwin-arm64": "macosx_11_0_arm64",
+                  "win32-x64": "win_amd64"
+              }
+              tag = platform_map.get(platform_tag, "any")
+              
+              # Rename wheel
+              new_name = wheel.replace("-any.whl", f"-{tag}.whl")
+              os.rename(wheel, new_name)
+              print(f"Renamed: {wheel} -> {new_name}")
+          EOF
+
+      - name: Upload wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.platform }}
+          path: dist/*.whl
 
   build-sdist:
     name: Build source distribution
@@ -114,7 +200,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -129,7 +215,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: sdist
-          path: ./dist/*.tar.gz
+          path: dist/*.tar.gz
 
   github-release:
     name: Create GitHub Release
@@ -146,11 +232,11 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: dist
-          pattern: "*"
+          pattern: "wheel-*|sdist"
           merge-multiple: true
 
-      - name: List downloaded artifacts
-        run: ls -la dist/
+      - name: List artifacts
+        run: ls -lh dist/
 
       - name: Create GitHub Release
         env:
@@ -177,6 +263,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: dist
+          pattern: "wheel-*|sdist"
           merge-multiple: true
 
       - name: Publish to PyPI
