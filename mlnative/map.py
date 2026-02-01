@@ -5,7 +5,6 @@ Uses native Rust renderer with statically linked MapLibre Native.
 Provides synchronous and async APIs for static map rendering.
 """
 
-import asyncio
 import json
 import warnings
 from collections.abc import Callable
@@ -94,19 +93,19 @@ class Map:
         """Get or create the render daemon."""
         if self._daemon is None:
             self._daemon = RenderDaemon()
-            
+
             # Get style string
             style = self._style
             if style is None:
                 style = DEFAULT_STYLE
-            
+
             if isinstance(style, dict):
                 style = json.dumps(style)
             elif isinstance(style, Path):
                 style = json.dumps(json.loads(style.read_text()))
-            
+
             self._daemon.start(self.width, self.height, str(style))
-        
+
         return self._daemon
 
     def load_style(self, style: str | dict[str, Any] | Path) -> None:
@@ -145,7 +144,7 @@ class Map:
                 raise MlnativeError(f"Unsupported style format: {style}")
         else:
             raise MlnativeError(f"Style must be str, dict, or Path, got {type(style)}")
-        
+
         # Reset daemon so it picks up new style
         if self._daemon is not None:
             self._daemon.stop()
@@ -239,7 +238,7 @@ class Map:
             center = view.get("center")
             if not center or len(center) != 2:
                 raise MlnativeError(f"View {i}: Invalid center")
-            
+
             lon, lat = center
             if not (-180 <= lon <= 180):
                 raise MlnativeError(f"View {i}: Longitude must be -180 to 180")
