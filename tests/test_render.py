@@ -54,13 +54,13 @@ class TestValidation:
 
     def test_map_dimension_validation(self):
         """Test that invalid dimensions raise errors."""
-        with pytest.raises(ValueError):
+        with pytest.raises(MlnativeError):
             Map(width=0, height=512)
 
-        with pytest.raises(ValueError):
+        with pytest.raises(MlnativeError):
             Map(width=512, height=0)
 
-        with pytest.raises(ValueError):
+        with pytest.raises(MlnativeError):
             Map(width=-100, height=512)
 
     def test_render_parameter_validation(self):
