@@ -255,12 +255,14 @@ class Map:
 
             bearing = view.get("bearing", 0) % 360
 
-            normalized_views.append({
-                "center": center,
-                "zoom": zoom,
-                "bearing": bearing,
-                "pitch": pitch,
-            })
+            normalized_views.append(
+                {
+                    "center": center,
+                    "zoom": zoom,
+                    "bearing": bearing,
+                    "pitch": pitch,
+                }
+            )
 
         try:
             daemon = self._get_daemon()

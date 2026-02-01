@@ -36,6 +36,12 @@ just lint-fix      # Auto-fix issues
 just format        # Format code
 just format-check  # Check formatting (CI)
 
+# Using ruff directly (if just is not available)
+ruff check mlnative/ tests/ examples/         # Check for issues
+ruff check mlnative/ tests/ examples/ --fix  # Auto-fix issues
+ruff format mlnative/ tests/ examples/       # Format code
+ruff format mlnative/ tests/ examples/ --check  # Check formatting
+
 # Type checking
 just typecheck
 

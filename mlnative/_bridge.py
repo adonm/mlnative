@@ -132,7 +132,9 @@ class RenderDaemon:
         except json.JSONDecodeError as e:
             raise MlnativeError(f"Invalid response from renderer: {e}") from e
 
-    def render(self, center: list[float], zoom: float, bearing: float = 0, pitch: float = 0) -> bytes:
+    def render(
+        self, center: list[float], zoom: float, bearing: float = 0, pitch: float = 0
+    ) -> bytes:
         """Render a single map view."""
         if not self._initialized:
             raise MlnativeError("Renderer not initialized")
@@ -151,6 +153,7 @@ class RenderDaemon:
             raise MlnativeError(f"Render failed: {response.get('error')}")
 
         import base64
+
         png_b64 = response.get("png")
         if not png_b64:
             raise MlnativeError("Render returned no image data")
@@ -173,6 +176,7 @@ class RenderDaemon:
             raise MlnativeError(f"Batch render failed: {response.get('error')}")
 
         import base64
+
         pngs_b64 = response.get("png", "").split(",")
         return [base64.b64decode(png) for png in pngs_b64 if png]
 
