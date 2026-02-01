@@ -97,7 +97,7 @@ ci-build-wheel PLATFORM:
     set -euo pipefail
     echo "Building wheel for {{PLATFORM}}..."
     uv pip install build
-    python -m build --wheel
+    uv run python -m build --wheel
     # Rename wheel with correct platform tag
     python3 << EOF
     import os
@@ -120,7 +120,7 @@ ci-build-wheel PLATFORM:
 # CI: Build source distribution
 ci-build-sdist:
     uv pip install build
-    python -m build --sdist
+    uv run python -m build --sdist
 
 # Run FastAPI example server
 serve:
