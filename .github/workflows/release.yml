@@ -51,6 +51,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
@@ -139,6 +140,9 @@ jobs:
         with:
           install: true
           cache: true
+
+      - name: Setup project
+        run: just ci-setup
 
       - name: Build sdist
         run: just ci-build-sdist
