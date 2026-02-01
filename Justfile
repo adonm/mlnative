@@ -12,6 +12,7 @@ setup:
 
 # CI-friendly setup (assumes tools are pre-installed)
 ci-setup:
+    uv venv
     uv pip install -e ".[dev]"
 
 # Build Rust native binary
