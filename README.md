@@ -1,168 +1,180 @@
 # mlnative
 
 [![PyPI version](https://badge.fury.io/py/mlnative.svg)](https://pypi.org/project/mlnative/)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/adonm/mlnative/blob/main/LICENSE)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-> **⚠️ Warning: This is an alpha release. The API may change significantly. Not recommended for production use.**
+Render static map images from Python using MapLibre Native.
 
-Simple Python wrapper for MapLibre GL Native using a native Rust renderer.
+**Platform:** Linux x64, ARM64  
+**Python:** 3.12+
 
-A grug-brained library for rendering static map images with minimal complexity.
-
-## Features
-
-- **Simple API**: One class, minimal methods, zero confusion
-- **Native Performance**: Rust backend with MapLibre Native C++ core
-- **Built-in Defaults**: Uses OpenFreeMap Liberty style by default - no configuration needed
-- **Address Support**: Built-in geocoding with geopy for rendering addresses directly
-- **Geometry Support**: Shapely integration for bounds fitting and GeoJSON
-
-## Installation
+## Quick Start
 
 ```bash
 pip install mlnative
 ```
 
-Platform-specific wheels include the native renderer binary:
-- Linux x86_64, aarch64
-
-## Quick Start
-
 ```python
 from mlnative import Map
 
-# Render a map - uses OpenFreeMap Liberty style by default
 with Map(512, 512) as m:
-    png_bytes = m.render(center=[-122.4, 37.8], zoom=12)
-    
-    with open("map.png", "wb") as f:
-        f.write(png_bytes)
+    png = m.render(center=[-122.4, 37.8], zoom=12)
+    open("map.png", "wb").write(png)
 ```
 
-## Rendering from Addresses
+## Features
+
+- **Zero config** - Works out of the box with OpenFreeMap tiles
+- **HiDPI support** - `pixel_ratio=2` for sharp retina displays
+- **Batch rendering** - Efficiently render hundreds of maps
+- **Address geocoding** - Built-in support via geopy
+- **Custom markers** - Add GeoJSON points, lines, polygons
+
+## Examples
+
+### Render from address
 
 ```python
 from mlnative import Map
 from geopy.geocoders import ArcGIS
 
-# Geocode an address and render
 geolocator = ArcGIS()
 location = geolocator.geocode("Sydney Opera House")
 
 with Map(512, 512) as m:
     png = m.render(
         center=[location.longitude, location.latitude],
-        zoom=15  # Good for landmark/building view
+        zoom=15
     )
-    open("sydney.png", "wb").write(png)
 ```
 
-## Custom Styles
+### Fit bounds to show area
 
-While OpenFreeMap Liberty is the default, you can override it:
+```python
+from mlnative import Map, feature_collection, point
+
+# Show multiple locations
+markers = feature_collection([
+    point(-122.4194, 37.7749),  # SF
+    point(-122.2712, 37.8044),  # Oakland
+])
+
+with Map(800, 600) as m:
+    # Load style as dict to modify it
+    style = {"version": 8, ...}  # your style
+    m.load_style(style)
+    m.set_geojson("markers", markers)
+    
+    # Fit map to show all markers
+    center, zoom = m.fit_bounds(
+        (-122.5, 37.7, -122.2, 37.9),  # xmin, ymin, xmax, ymax
+        padding=50
+    )
+    png = m.render(center=center, zoom=zoom)
+```
+
+### Batch render multiple views
+
+```python
+views = [
+    {"center": [0, 0], "zoom": 1},
+    {"center": [-122.4, 37.8], "zoom": 12},
+    {"center": [151.2, -33.9], "zoom": 10, "bearing": 45},
+]
+
+with Map(512, 512) as m:
+    pngs = m.render_batch(views)  # Returns list of PNG bytes
+```
+
+### HiDPI rendering
+
+```python
+# Retina/HiDPI display (2x resolution)
+with Map(512, 512, pixel_ratio=2) as m:
+    png = m.render(center=[0, 0], zoom=5)
+    # Image is 1024x1024, text appears sharp
+```
+
+## API Reference
+
+### Map(width, height, pixel_ratio=1.0)
+
+Create map renderer. Context manager ensures cleanup.
+
+### render(center, zoom, bearing=0, pitch=0)
+
+Render single view. Returns PNG bytes.
+
+- `center`: `[longitude, latitude]`
+- `zoom`: 0-24
+- `bearing`: Rotation in degrees (0-360)
+- `pitch`: Tilt in degrees (0-85)
+
+### render_batch(views)
+
+Render multiple views efficiently.
+
+```python
+views = [
+    {"center": [lon, lat], "zoom": z},
+    {"center": [lon, lat], "zoom": z, "geojson": {"markers": {...}}},
+]
+```
+
+### fit_bounds(bounds, padding=0, max_zoom=24)
+
+Calculate center/zoom to fit bounding box.
+
+```python
+center, zoom = m.fit_bounds((xmin, ymin, xmax, ymax))
+png = m.render(center=center, zoom=zoom)
+```
+
+### set_geojson(source_id, geojson)
+
+Update GeoJSON source in style (requires dict style, not URL).
+
+```python
+m.set_geojson("markers", {"type": "FeatureCollection", "features": [...]})
+```
+
+### load_style(style)
+
+Load custom style (URL, file path, or dict).
 
 ```python
 # OpenFreeMap styles
 m.load_style("https://tiles.openfreemap.org/styles/liberty")
 m.load_style("https://tiles.openfreemap.org/styles/positron")
-m.load_style("https://tiles.openfreemap.org/styles/dark")
 
-# MapLibre demo tiles (good for testing)
+# MapLibre demo
 m.load_style("https://demotiles.maplibre.org/style.json")
 
-# Or load from dict
+# Custom style dict
 m.load_style({"version": 8, "sources": {...}, "layers": [...]})
 ```
 
-## API Reference
-
-### Map Class
-
-**`Map(width, height, pixel_ratio=1.0)`**
-
-Create a new map renderer.
-
-- `width`: Image width in pixels (1-4096)
-- `height`: Image height in pixels (1-4096)
-- `pixel_ratio`: Pixel ratio for high-DPI rendering
-
-**`render(center, zoom, bearing=0, pitch=0)`**
-
-Render the map to PNG bytes. Uses OpenFreeMap Liberty style by default.
-
-- `center`: `[longitude, latitude]` list
-- `zoom`: Zoom level (0-24)
-- `bearing`: Rotation in degrees (0-360)
-- `pitch`: Tilt in degrees (0-85)
-
-**`render_batch(views)`**
-
-Render multiple views efficiently.
-
-**`fit_bounds(bounds, padding=0, max_zoom=24)`**
-
-Calculate center/zoom to fit bounds. Returns `(center, zoom)`.
-
-```python
-bounds = (-122.6, 37.7, -122.3, 37.9)  # (xmin, ymin, xmax, ymax)
-center, zoom = m.fit_bounds(bounds)
-png = m.render(center=center, zoom=zoom)
-```
-
-**`set_geojson(source_id, geojson)`**
-
-Update GeoJSON source data (requires style loaded as dict).
-
-```python
-from shapely import Point
-m.set_geojson("markers", Point(-122.4, 37.8))
-```
-
-**`load_style(style)`**
-
-Load custom style (URL, file path, or dict). Call before render if not using default.
-
-### GeoJSON Helpers
+## GeoJSON Helpers
 
 ```python
 from mlnative import point, feature_collection, from_coordinates, from_latlng
 
-# From coordinates (lng, lat)
+# Create point
+sf = point(-122.4194, 37.7749, {"name": "San Francisco"})
+
+# From coordinate tuples
 fc = from_coordinates([(-122.4, 37.8), (-74.0, 40.7)])
 
-# From GPS coordinates (lat, lng)  
+# From GPS (lat, lng) order
 fc = from_latlng([(37.8, -122.4), (40.7, -74.0)])
-
-# From shapely
-from shapely import MultiPoint, Point
-fc = feature_collection(MultiPoint([Point(-122.4, 37.8), Point(-74.0, 40.7)]))
 ```
 
-## Examples
+## Notes
 
-See `examples/` directory:
-- `basic.py` - Simple usage
-- `address_rendering.py` - Render from addresses
-- `fastapi_server.py` - Static maps API
-
-## Supported Platforms
-
-- Linux x86_64, aarch64
-
-> **Note:** macOS and Windows support limited due to upstream MapLibre Native build constraints.
-
-## Development
-
-Requires Python 3.12+, Rust 1.70+, and uv.
-
-```bash
-# Setup
-uv pip install -e ".[dev,web]"
-cd rust && cargo build --release
-
-# Run tests
-just test
-```
+- **Default style**: OpenFreeMap Liberty (no configuration needed)
+- **GeoJSON updates**: Requires style loaded as dict, not URL
+- **pixel_ratio**: Higher values = larger image, same geographic area
+- **Platform**: Linux only (macOS/Windows builds disabled due to upstream issues)
 
 ## License
 
