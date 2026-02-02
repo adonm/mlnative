@@ -49,7 +49,7 @@ Different [OpenFreeMap](https://openfreemap.org/) styles (rendered from "Sydney 
 
 **Liberty (default)** | **Positron (light)** | **Dark Matter**
 :---:|:---:|:---:|
-![Liberty](docs/images/style-liberty.png) | ![Positron](docs/images/style-positron.png) | ![Dark](docs/images/style-dark.png)
+![Liberty](https://raw.githubusercontent.com/adonm/mlnative/main/docs/images/style-liberty.png) | ![Positron](https://raw.githubusercontent.com/adonm/mlnative/main/docs/images/style-positron.png) | ![Dark](https://raw.githubusercontent.com/adonm/mlnative/main/docs/images/style-dark.png)
 
 Styles from [OpenFreeMap](https://openfreemap.org/)
 
@@ -59,7 +59,7 @@ Same location, different pixel ratios:
 
 **Standard (1x)** | **HiDPI (2x)**
 :---:|:---:
-<img src="docs/images/pixelratio-1x.png" width="200"> | <img src="docs/images/pixelratio-2x.png" width="200">
+<img src="https://raw.githubusercontent.com/adonm/mlnative/main/docs/images/pixelratio-1x.png" width="200"> | <img src="https://raw.githubusercontent.com/adonm/mlnative/main/docs/images/pixelratio-2x.png" width="200">
 *400x300 px* | *800x600 px*
 
 Both displayed at 200px width. The 2x version has 4x more pixels for sharper details.
