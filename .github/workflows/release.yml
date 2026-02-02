@@ -57,7 +57,13 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libcurl4-openssl-dev pkg-config xvfb
+          sudo apt-get install -y \
+            libcurl4-openssl-dev \
+            pkg-config \
+
+            libglfw3-dev \
+            libuv1-dev \
+            libz-dev
 
       - name: Setup tools with mise
         uses: jdx/mise-action@v2
@@ -101,7 +107,13 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libcurl4-openssl-dev pkg-config xvfb
+          sudo apt-get install -y \
+            libcurl4-openssl-dev \
+            pkg-config \
+
+            libglfw3-dev \
+            libuv1-dev \
+            libz-dev
 
       - name: Setup tools with mise
         uses: jdx/mise-action@v2

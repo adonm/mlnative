@@ -79,15 +79,20 @@ The native renderer requires:
 
 1. **libcurl4-openssl-dev**: For HTTP tile requests
 2. **pkg-config**: For build configuration
-3. **xvfb**: Virtual framebuffer for headless OpenGL rendering
-4. **Network access**: Must reach tiles.openfreemap.org
+3. **libglfw3-dev**: GLFW library for windowing
+4. **libuv1-dev**: libuv for async I/O
+5. **libz-dev**: zlib compression library
+6. **Network access**: Must reach tiles.openfreemap.org
 
 ### For Building
 
 1. **Rust 1.70+**: For compiling the native renderer
 2. **libcurl4-openssl-dev**: System dependency
 3. **pkg-config**: Build configuration
-4. **CMake**: Required by maplibre-native build
+4. **libglfw3-dev**: GLFW library
+5. **libuv1-dev**: libuv for async I/O
+6. **libz-dev**: zlib compression
+7. **CMake**: Required by maplibre-native build
 
 ## Network Requirements
 
@@ -107,7 +112,7 @@ Solution: Install `libcurl4-openssl-dev`
 
 ### Graphics/Display Issues
 Error: `Failed to initialize graphics`
-Solution: Install `xvfb` and run tests with `xvfb-run` if needed (though maplibre-native uses headless rendering)
+Solution: Ensure all graphics libraries are installed (`libglfw3-dev`, `libuv1-dev`)
 
 ### Network Timeouts
 Error: `Failed to fetch tile`
@@ -119,7 +124,12 @@ To run the same tests as CI:
 
 ```bash
 # Install system dependencies (Ubuntu/Debian)
-sudo apt-get install -y libcurl4-openssl-dev pkg-config xvfb
+sudo apt-get install -y \
+  libcurl4-openssl-dev \
+  pkg-config \
+  libglfw3-dev \
+  libuv1-dev \
+  libz-dev
 
 # Build the binary
 just build-rust
