@@ -66,6 +66,28 @@ class TestFitBounds:
         with pytest.raises(MlnativeError, match="closed"):
             m.fit_bounds((-122.5, 37.7, -122.3, 37.9))
 
+    def test_fit_bounds_single_point(self):
+        """Test fitting bounds to a single point (e.g., from shapely Point.bounds)."""
+        m = Map(width=512, height=512)
+        # Single point bounds (xmin==xmax, ymin==ymax)
+        bounds = (115.85542, -31.95415, 115.85542, -31.95415)
+        center, zoom = m.fit_bounds(bounds)
+
+        # Center should be the point itself
+        assert center[0] == pytest.approx(115.85542, abs=0.00001)
+        assert center[1] == pytest.approx(-31.95415, abs=0.00001)
+        # Should get a sensible default zoom for a single point
+        assert zoom == pytest.approx(14.0, abs=0.1)
+
+    def test_fit_bounds_single_point_with_max_zoom(self):
+        """Test single point with custom max_zoom."""
+        m = Map(width=512, height=512)
+        bounds = (115.85542, -31.95415, 115.85542, -31.95415)
+        center, zoom = m.fit_bounds(bounds, max_zoom=10)
+
+        # Should respect the max_zoom limit
+        assert zoom <= 10.0
+
 
 class TestSetGeojson:
     """Tests for set_geojson() method."""

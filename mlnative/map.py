@@ -314,14 +314,19 @@ class Map:
             raise MlnativeError(f"Longitude must be -180 to 180, got {bounds}")
         if not (-90 <= ymin <= 90 and -90 <= ymax <= 90):
             raise MlnativeError(f"Latitude must be -90 to 90, got {bounds}")
-        if xmin >= xmax:
-            raise MlnativeError(f"xmin must be < xmax, got {bounds}")
-        if ymin >= ymax:
-            raise MlnativeError(f"ymin must be < ymax, got {bounds}")
+        if xmin > xmax:
+            raise MlnativeError(f"xmin must be <= xmax, got {bounds}")
+        if ymin > ymax:
+            raise MlnativeError(f"ymin must be <= ymax, got {bounds}")
 
         # Calculate center
         center_lon = (xmin + xmax) / 2
         center_lat = (ymin + ymax) / 2
+
+        # Handle single point case (bounds are a point, not an area)
+        if xmin == xmax and ymin == ymax:
+            # For a single point, use a sensible default zoom
+            return [center_lon, center_lat], min(14.0, max_zoom)
 
         # Calculate zoom using spherical mercator projection
         # Convert lat/lon to mercator meters
