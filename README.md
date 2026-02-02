@@ -266,6 +266,10 @@ The `pixel_ratio` parameter controls the resolution of the output image:
 - **GeoJSON updates**: Requires style loaded as dict, not URL
 - **Platform**: Linux only (macOS/Windows builds disabled due to upstream issues)
 
+## Development
+
+See [docs/CI.md](docs/CI.md) for CI/CD setup and requirements.
+
 ## License
 
 Apache-2.0
