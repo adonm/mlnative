@@ -30,7 +30,7 @@ def render_address(address: str, width: int = 512, height: int = 512, zoom: int 
 if __name__ == "__main__":
     # Example: Render map of Sydney Opera House
     print("Rendering map of Sydney Opera House...")
-    png, location = render_address("Sydney Opera House, Australia", zoom=16)
+    png, location = render_address("Sydney Opera House, Australia", zoom=15)
 
     output_path = "sydney_opera_house.png"
     with open(output_path, "wb") as f:

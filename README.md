@@ -49,7 +49,7 @@ location = geolocator.geocode("Sydney Opera House")
 with Map(512, 512) as m:
     png = m.render(
         center=[location.longitude, location.latitude],
-        zoom=16
+        zoom=15  # Good for landmark/building view
     )
     open("sydney.png", "wb").write(png)
 ```
@@ -59,8 +59,13 @@ with Map(512, 512) as m:
 While OpenFreeMap Liberty is the default, you can override it:
 
 ```python
-# Load a different style
-m.load_style("https://example.com/style.json")
+# OpenFreeMap styles
+m.load_style("https://tiles.openfreemap.org/styles/liberty")
+m.load_style("https://tiles.openfreemap.org/styles/positron")
+m.load_style("https://tiles.openfreemap.org/styles/dark")
+
+# MapLibre demo tiles (good for testing)
+m.load_style("https://demotiles.maplibre.org/style.json")
 
 # Or load from dict
 m.load_style({"version": 8, "sources": {...}, "layers": [...]})
