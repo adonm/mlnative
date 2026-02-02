@@ -1,6 +1,9 @@
-# mlnative ⚠️ ALPHA RELEASE
+# mlnative
 
-> **⚠️ Warning: This is an alpha release (v0.2.0-alpha). The API may change significantly. Not recommended for production use.**
+[![PyPI version](https://badge.fury.io/py/mlnative.svg)](https://pypi.org/project/mlnative/)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/adonm/mlnative/blob/main/LICENSE)
+
+> **⚠️ Warning: This is an alpha release. The API may change significantly. Not recommended for production use.**
 
 Simple Python wrapper for MapLibre GL Native using a native Rust renderer.
 
