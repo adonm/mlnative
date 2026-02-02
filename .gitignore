@@ -66,3 +66,6 @@ uv.lock
 lib_symlinks/
 rust/target/
 mlnative/bin/*
+
+# Allow docs images to be committed
+!docs/images/*.png

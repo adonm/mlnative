@@ -3,10 +3,12 @@
 [![PyPI version](https://badge.fury.io/py/mlnative.svg)](https://pypi.org/project/mlnative/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-Render static map images from Python using MapLibre Native.
+Render static map images from Python using [MapLibre Native](https://github.com/maplibre/maplibre-native).
 
 **Platform:** Linux x64, ARM64  
 **Python:** 3.12+
+
+Uses the [maplibre-native](https://crates.io/crates/maplibre-native) Rust crate for high-performance native rendering.
 
 ## Quick Start
 
@@ -38,6 +40,31 @@ with Map(512, 512) as m:
 - **Batch rendering** - Efficiently render hundreds of maps
 - **Address geocoding** - Built-in support via geopy
 - **Custom markers** - Add GeoJSON points, lines, polygons
+
+## Screenshots
+
+### Map Styles
+
+Different [OpenFreeMap](https://openfreemap.org/) styles (rendered from "Sydney Opera House"):
+
+**Liberty (default)** | **Positron (light)** | **Dark Matter**
+:---:|:---:|:---:|
+![Liberty](docs/images/style-liberty.png) | ![Positron](docs/images/style-positron.png) | ![Dark](docs/images/style-dark.png)
+
+Styles from [OpenFreeMap](https://openfreemap.org/)
+
+### HiDPI / Retina Rendering
+
+Same location, different pixel ratios:
+
+**Standard (1x)** | **HiDPI (2x)**
+:---:|:---:
+<img src="docs/images/pixelratio-1x.png" width="200"> | <img src="docs/images/pixelratio-2x.png" width="200">
+*400x300 px* | *800x600 px*
+
+Both displayed at 200px width. The 2x version has 4x more pixels for sharper details.
+
+Both images show the exact same geographic area. The 2x version has 4x more pixels for sharper text and details on retina displays.
 
 ## Examples
 
