@@ -73,26 +73,59 @@ The project uses GitHub Actions for continuous integration and deployment. The w
 
 ## System Requirements
 
-### For Rendering (Smoke/Integration Tests)
+### Build-Time Dependencies (for compiling the Rust binary)
 
-The native renderer requires:
+Required when building the native renderer from source:
 
-1. **libcurl4-openssl-dev**: For HTTP tile requests
-2. **pkg-config**: For build configuration
-3. **libglfw3-dev**: GLFW library for windowing
-4. **libuv1-dev**: libuv for async I/O
-5. **libz-dev**: zlib compression library
-6. **Network access**: Must reach tiles.openfreemap.org
+| Package | Purpose |
+|---------|---------|
+| **Rust 1.70+** | Compiler toolchain |
+| **libcurl4-openssl-dev** | HTTP client library (development headers) |
+| **pkg-config** | Build configuration tool |
+| **libglfw3-dev** | GLFW windowing library (development headers) |
+| **libuv1-dev** | Async I/O library (development headers) |
+| **libz-dev** | zlib compression (development headers) |
+| **CMake** | Build system generator |
 
-### For Building
+**Ubuntu/Debian:**
+```bash
+sudo apt-get install -y \
+  libcurl4-openssl-dev \
+  pkg-config \
+  libglfw3-dev \
+  libuv1-dev \
+  libz-dev \
+  cmake
+```
 
-1. **Rust 1.70+**: For compiling the native renderer
-2. **libcurl4-openssl-dev**: System dependency
-3. **pkg-config**: Build configuration
-4. **libglfw3-dev**: GLFW library
-5. **libuv1-dev**: libuv for async I/O
-6. **libz-dev**: zlib compression
-7. **CMake**: Required by maplibre-native build
+### Runtime Dependencies (for using pre-built wheels)
+
+Required when using mlnative from PyPI (pre-built wheels):
+
+| Package | Purpose | Critical |
+|---------|---------|----------|
+| **mesa-vulkan-drivers** | Vulkan graphics drivers | **YES** |
+| **libcurl4** | HTTP client library | Yes |
+| **libglfw3** | GLFW windowing library | Yes |
+| **libuv1** | Async I/O library | Yes |
+| **zlib1g** | zlib compression | Yes |
+| **Network access** | Must reach tiles.openfreemap.org | Yes |
+
+**⚠️ CRITICAL:** `mesa-vulkan-drivers` is required for GPU rendering. Without it, the renderer will crash immediately.
+
+**Ubuntu/Debian:**
+```bash
+sudo apt-get install -y \
+  mesa-vulkan-drivers \
+  libcurl4 \
+  libglfw3 \
+  libuv1 \
+  zlib1g
+```
+
+**Why different packages?**
+- Build uses `-dev` packages (headers + libraries)
+- Runtime uses base packages (libraries only, smaller/faster)
 
 ## Network Requirements
 
@@ -111,8 +144,18 @@ Error: `cannot find -lcurl`
 Solution: Install `libcurl4-openssl-dev`
 
 ### Graphics/Display Issues
-Error: `Failed to initialize graphics`
-Solution: Ensure all graphics libraries are installed (`libglfw3-dev`, `libuv1-dev`)
+Error: `Failed to initialize graphics` or `Renderer process closed unexpectedly`
+Solution: Install **mesa-vulkan-drivers** (critical runtime dependency):
+```bash
+sudo apt-get install -y mesa-vulkan-drivers
+```
+
+### Missing System Libraries
+Error: `cannot find -lcurl` (during build)
+Solution: Install development package:
+```bash
+sudo apt-get install -y libcurl4-openssl-dev
+```
 
 ### Network Timeouts
 Error: `Failed to fetch tile`
@@ -120,32 +163,50 @@ Solution: Ensure outbound HTTPS is allowed and OpenFreeMap is accessible
 
 ## Testing Locally
 
-To run the same tests as CI:
+### Option 1: Using Pre-built Wheel (Recommended for testing)
+
+If you just want to test rendering without building:
 
 ```bash
-# Install system dependencies (Ubuntu/Debian)
+# Install runtime dependencies only
 sudo apt-get install -y \
-  libcurl4-openssl-dev \
-  pkg-config \
-  libglfw3-dev \
-  libuv1-dev \
-  libz-dev
+  mesa-vulkan-drivers \
+  libcurl4 \
+  libglfw3 \
+  libuv1 \
+  zlib1g
 
-# Build the binary
-just build-rust
+# Install mlnative from PyPI
+pip install mlnative
 
-# Run unit tests
-just test-unit
-
-# Run smoke test
+# Run tests
 python -c "
 from mlnative import Map
 with Map(256, 256) as m:
     png = m.render(center=[0, 0], zoom=1)
     print(f'Rendered: {len(png)} bytes')
 "
+```
 
-# Run integration tests
+### Option 2: Building from Source
+
+If you need to modify and build the Rust binary:
+
+```bash
+# Install build dependencies
+sudo apt-get install -y \
+  libcurl4-openssl-dev \
+  pkg-config \
+  libglfw3-dev \
+  libuv1-dev \
+  libz-dev \
+  cmake
+
+# Build the binary
+just build-rust
+
+# Run tests
+just test-unit
 pytest tests/ -m integration -v
 ```
 

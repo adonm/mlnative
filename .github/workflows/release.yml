@@ -54,15 +54,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Install system dependencies
+      - name: Install system dependencies (runtime)
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libcurl4-openssl-dev \
-            pkg-config \
-            libglfw3-dev \
-            libuv1-dev \
-            libz-dev
+            mesa-vulkan-drivers \
+            libcurl4 \
+            libglfw3 \
+            libuv1 \
+            zlib1g
 
       - name: Setup tools with mise
         uses: jdx/mise-action@v2
@@ -91,6 +91,8 @@ jobs:
         run: |
           echo "Testing basic render functionality..."
           uv run python -c "
+          import os
+          os.environ['MLNATIVE_DEBUG'] = '1'
           from mlnative import Map
           with Map(256, 256) as m:
               png = m.render(center=[0, 0], zoom=1)
@@ -108,15 +110,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Install system dependencies
+      - name: Install system dependencies (runtime)
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libcurl4-openssl-dev \
-            pkg-config \
-            libglfw3-dev \
-            libuv1-dev \
-            libz-dev
+            mesa-vulkan-drivers \
+            libcurl4 \
+            libglfw3 \
+            libuv1 \
+            zlib1g
 
       - name: Setup tools with mise
         uses: jdx/mise-action@v2
