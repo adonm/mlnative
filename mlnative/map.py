@@ -6,11 +6,14 @@ Provides synchronous and async APIs for static map rendering.
 """
 
 import json
+import math
 import warnings
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
+
+from shapely.geometry.base import BaseGeometry
 
 from ._bridge import RenderDaemon
 from .exceptions import MlnativeError
@@ -269,6 +272,171 @@ class Map:
             return daemon.render_batch(normalized_views)
         except Exception as e:
             raise MlnativeError(f"Batch render failed: {e}") from e
+
+    def fit_bounds(
+        self,
+        bounds: tuple[float, float, float, float],
+        padding: int = 0,
+        max_zoom: float = MAX_ZOOM,
+    ) -> tuple[list[float], float]:
+        """Calculate center and zoom to fit geographic bounds.
+
+        Uses spherical mercator projection to calculate the optimal zoom level
+        for displaying the given bounds within the map dimensions.
+
+        Args:
+            bounds: (xmin, ymin, xmax, ymax) bounding box in degrees
+            padding: Padding in pixels to add around the bounds (default 0)
+            max_zoom: Maximum zoom level to use (default 24)
+
+        Returns:
+            Tuple of (center, zoom) where center is [lon, lat] and zoom is float.
+            Pass these directly to render():
+                center, zoom = map.fit_bounds(bounds)
+                png = map.render(center=center, zoom=zoom)
+
+        Example:
+            # Fit to bounds of San Francisco Bay Area
+            bounds = (-122.6, 37.7, -122.3, 37.9)  # xmin, ymin, xmax, ymax
+            center, zoom = map.fit_bounds(bounds, padding=50)
+            png = map.render(center=center, zoom=zoom)
+
+        Raises:
+            MlnativeError: If bounds are invalid
+        """
+        if self._closed:
+            raise MlnativeError("Map has been closed")
+
+        xmin, ymin, xmax, ymax = bounds
+
+        # Validate bounds
+        if not (-180 <= xmin <= 180 and -180 <= xmax <= 180):
+            raise MlnativeError(f"Longitude must be -180 to 180, got {bounds}")
+        if not (-90 <= ymin <= 90 and -90 <= ymax <= 90):
+            raise MlnativeError(f"Latitude must be -90 to 90, got {bounds}")
+        if xmin >= xmax:
+            raise MlnativeError(f"xmin must be < xmax, got {bounds}")
+        if ymin >= ymax:
+            raise MlnativeError(f"ymin must be < ymax, got {bounds}")
+
+        # Calculate center
+        center_lon = (xmin + xmax) / 2
+        center_lat = (ymin + ymax) / 2
+
+        # Calculate zoom using spherical mercator projection
+        # Convert lat/lon to mercator meters
+        def lat_to_y(lat: float) -> float:
+            """Convert latitude to spherical mercator Y coordinate."""
+            lat_rad = math.radians(lat)
+            return math.log(math.tan(lat_rad / 2 + math.pi / 4))
+
+        # Get bounds in mercator space
+        y_min = lat_to_y(ymin)
+        y_max = lat_to_y(ymax)
+
+        # Longitude spans linearly in mercator
+        x_range = xmax - xmin
+        y_range = abs(y_max - y_min)
+
+        # Account for padding
+        width = self.width - 2 * padding
+        height = self.height - 2 * padding
+
+        if width <= 0 or height <= 0:
+            raise MlnativeError(f"Padding too large for map size {self.width}x{self.height}")
+
+        # Calculate zoom for each dimension
+        # At zoom 0, the world is 256x256 pixels
+        # Each zoom level doubles the resolution
+        x_zoom = math.log2((width * 360) / (x_range * 256))
+        y_zoom = math.log2((height * 2 * math.pi) / (y_range * 256))
+
+        # Use the smaller zoom to ensure bounds fit in both dimensions
+        zoom = min(x_zoom, y_zoom, max_zoom)
+
+        # Clamp to valid zoom range
+        zoom = max(0.0, min(float(zoom), MAX_ZOOM))
+
+        return [center_lon, center_lat], zoom
+
+    def set_geojson(
+        self,
+        source_id: str,
+        geojson: dict[str, Any] | str | BaseGeometry,
+    ) -> None:
+        """Update GeoJSON data for a source in the current style.
+
+        Modifies the style to update or add a GeoJSON source with the given ID.
+        The style must be loaded as a dict (not a URL). If the style was loaded
+        from a URL, you need to fetch and load it as a dict first.
+
+        Args:
+            source_id: The ID of the source to update in the style
+            geojson: GeoJSON data as dict, JSON string, or shapely geometry.
+                    Shapely geometries are automatically converted to GeoJSON.
+
+        Example:
+            # Using GeoJSON dict
+            geojson = {
+                "type": "FeatureCollection",
+                "features": [
+                    {"type": "Feature", "geometry": {"type": "Point", "coordinates": [0, 0]}}
+                ]
+            }
+            map.set_geojson("markers", geojson)
+
+            # Using shapely geometry
+            from shapely import Point, MultiPoint
+            pts = MultiPoint([Point(-122.4, 37.8), Point(-74.0, 40.7)])
+            map.set_geojson("markers", pts)
+
+        Raises:
+            MlnativeError: If style is a URL (must be dict), or if geojson is invalid
+        """
+        if self._closed:
+            raise MlnativeError("Map has been closed")
+
+        # Check that style is a dict (not URL)
+        if self._style is None:
+            raise MlnativeError("No style loaded. Call load_style() first.")
+
+        if isinstance(self._style, str):
+            raise MlnativeError(
+                "Cannot set GeoJSON on URL-loaded style. "
+                "Load the style as a dict first: "
+                "map.load_style(requests.get(url).json())"
+            )
+
+        # Convert geojson to dict if needed
+        if isinstance(geojson, BaseGeometry):
+            # Shapely geometry - convert to GeoJSON
+            from shapely.geometry import mapping
+
+            geojson = {
+                "type": "FeatureCollection",
+                "features": [{"type": "Feature", "geometry": mapping(geojson), "properties": {}}],
+            }
+        elif isinstance(geojson, str):
+            # JSON string - parse it
+            try:
+                geojson = json.loads(geojson)
+            except json.JSONDecodeError as e:
+                raise MlnativeError(f"Invalid GeoJSON string: {e}") from e
+
+        # Ensure sources dict exists
+        if "sources" not in self._style:
+            self._style["sources"] = {}
+
+        # Update the source
+        self._style["sources"][source_id] = {
+            "type": "geojson",
+            "data": geojson,
+        }
+
+        # Reset daemon to pick up new style
+        if self._daemon is not None:
+            self._daemon.stop()
+            self._daemon = None
 
     def close(self) -> None:
         """Close the map and release resources."""

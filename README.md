@@ -8,12 +8,11 @@ A grug-brained library for rendering static map images with minimal complexity.
 
 ## Features
 
-- **Simple API**: One class, 4 methods, zero confusion
+- **Simple API**: One class, minimal methods, zero confusion
 - **Native Performance**: Rust backend with MapLibre Native C++ core
-- **No Runtime Dependencies**: Bundled native binaries, no system libraries needed
-- **Batch Rendering**: Efficiently render hundreds of maps with one process
-- **Mapbox-compatible**: Easy migration from Mapbox Static Images API
-- **Default OpenFreeMap**: Uses Liberty style from OpenFreeMap by default
+- **Built-in Defaults**: Uses OpenFreeMap Liberty style by default - no configuration needed
+- **Address Support**: Built-in geocoding with geopy for rendering addresses directly
+- **Geometry Support**: Shapely integration for bounds fitting and GeoJSON
 
 ## Installation
 
@@ -23,170 +22,138 @@ pip install mlnative
 
 Platform-specific wheels include the native renderer binary:
 - Linux x86_64, aarch64
-- macOS x86_64, arm64 (Apple Silicon)
-- Windows x64
 
 ## Quick Start
 
 ```python
 from mlnative import Map
 
-# Render a single map
+# Render a map - uses OpenFreeMap Liberty style by default
 with Map(512, 512) as m:
-    m.load_style("https://tiles.openfreemap.org/styles/liberty")
     png_bytes = m.render(center=[-122.4, 37.8], zoom=12)
     
     with open("map.png", "wb") as f:
         f.write(png_bytes)
 ```
 
-## API
+## Rendering from Addresses
 
-### `Map(width, height, request_handler=None, pixel_ratio=1.0)`
+```python
+from mlnative import Map
+from geopy.geocoders import ArcGIS
+
+# Geocode an address and render
+geolocator = ArcGIS()
+location = geolocator.geocode("Sydney Opera House")
+
+with Map(512, 512) as m:
+    png = m.render(
+        center=[location.longitude, location.latitude],
+        zoom=16
+    )
+    open("sydney.png", "wb").write(png)
+```
+
+## Custom Styles
+
+While OpenFreeMap Liberty is the default, you can override it:
+
+```python
+# Load a different style
+m.load_style("https://example.com/style.json")
+
+# Or load from dict
+m.load_style({"version": 8, "sources": {...}, "layers": [...]})
+```
+
+## API Reference
+
+### Map Class
+
+**`Map(width, height, pixel_ratio=1.0)`**
 
 Create a new map renderer.
 
-**Parameters:**
 - `width`: Image width in pixels (1-4096)
 - `height`: Image height in pixels (1-4096)
-- `request_handler`: Optional function for custom tile requests (not yet implemented)
 - `pixel_ratio`: Pixel ratio for high-DPI rendering
 
-### `load_style(style)`
+**`render(center, zoom, bearing=0, pitch=0)`**
 
-Load a map style. Accepts:
-- URL string (http/https)
-- File path to JSON file
-- Style JSON dict
+Render the map to PNG bytes. Uses OpenFreeMap Liberty style by default.
 
-### `render(center, zoom, bearing=0, pitch=0)`
-
-Render the map to PNG bytes.
-
-**Parameters:**
 - `center`: `[longitude, latitude]` list
 - `zoom`: Zoom level (0-24)
 - `bearing`: Rotation in degrees (0-360)
 - `pitch`: Tilt in degrees (0-85)
 
-**Returns:** PNG image bytes
+**`render_batch(views)`**
 
-### `render_batch(views)`
+Render multiple views efficiently.
 
-Render multiple map views efficiently.
+**`fit_bounds(bounds, padding=0, max_zoom=24)`**
 
-**Parameters:**
-- `views`: List of dicts with `center`, `zoom`, `bearing`, `pitch` keys
+Calculate center/zoom to fit bounds. Returns `(center, zoom)`.
 
-**Returns:** List of PNG image bytes
+```python
+bounds = (-122.6, 37.7, -122.3, 37.9)  # (xmin, ymin, xmax, ymax)
+center, zoom = m.fit_bounds(bounds)
+png = m.render(center=center, zoom=zoom)
+```
 
-### `close()`
+**`set_geojson(source_id, geojson)`**
 
-Release resources. Called automatically with context manager.
+Update GeoJSON source data (requires style loaded as dict).
+
+```python
+from shapely import Point
+m.set_geojson("markers", Point(-122.4, 37.8))
+```
+
+**`load_style(style)`**
+
+Load custom style (URL, file path, or dict). Call before render if not using default.
+
+### GeoJSON Helpers
+
+```python
+from mlnative import point, feature_collection, from_coordinates, from_latlng
+
+# From coordinates (lng, lat)
+fc = from_coordinates([(-122.4, 37.8), (-74.0, 40.7)])
+
+# From GPS coordinates (lat, lng)  
+fc = from_latlng([(37.8, -122.4), (40.7, -74.0)])
+
+# From shapely
+from shapely import MultiPoint, Point
+fc = feature_collection(MultiPoint([Point(-122.4, 37.8), Point(-74.0, 40.7)]))
+```
 
 ## Examples
 
-### Basic Usage
-
-```python
-from mlnative import Map
-
-# San Francisco
-with Map(800, 600) as m:
-    m.load_style("https://tiles.openfreemap.org/styles/liberty")
-    png = m.render(
-        center=[-122.4194, 37.7749],
-        zoom=12,
-        bearing=45,
-        pitch=30
-    )
-    open("sf.png", "wb").write(png)
-```
-
-### Batch Rendering
-
-```python
-from mlnative import Map
-
-views = [
-    {"center": [0, 0], "zoom": 1},
-    {"center": [10, 10], "zoom": 5},
-    {"center": [-122.4, 37.8], "zoom": 12},
-    # ... more views
-]
-
-with Map(512, 512) as m:
-    m.load_style("https://tiles.openfreemap.org/styles/liberty")
-    pngs = m.render_batch(views)
-    
-    for i, png in enumerate(pngs):
-        with open(f"map_{i}.png", "wb") as f:
-            f.write(png)
-```
-
-### FastAPI Server
-
-```bash
-pip install mlnative[web]
-python examples/fastapi_server.py
-```
-
-Then visit:
-```
-http://localhost:8000/static/-122.4194,37.7749,12/512x512.png
-```
+See `examples/` directory:
+- `basic.py` - Simple usage
+- `address_rendering.py` - Render from addresses
+- `fastapi_server.py` - Static maps API
 
 ## Supported Platforms
 
 - Linux x86_64, aarch64
-- macOS x86_64, arm64 (Apple Silicon)
-- Windows x64
 
-## Architecture
-
-```
-Python (mlnative) 
-    ↓ JSON
-Rust (mlnative-render daemon)
-    ↓ FFI
-MapLibre Native (C++ core with statically linked dependencies)
-```
-
-The native renderer uses pre-built "amalgam" libraries from MapLibre Native which include all dependencies (ICU, libjpeg, etc.) statically linked. This eliminates system dependency issues.
+> **Note:** macOS and Windows support limited due to upstream MapLibre Native build constraints.
 
 ## Development
 
-### Prerequisites
-
-- Python 3.12+
-- Rust toolchain (1.70+)
-- uv (Python package manager)
-
-### Setup
+Requires Python 3.12+, Rust 1.70+, and uv.
 
 ```bash
-# Install Python dependencies
-uv venv
+# Setup
 uv pip install -e ".[dev,web]"
-
-# Build Rust binary
 cd rust && cargo build --release
-```
 
-### Run Tests
-
-```bash
+# Run tests
 just test
-```
-
-### Build Wheels
-
-```bash
-# Local wheel (current platform only)
-uv build
-
-# All platforms (requires Docker)
-just build-wheels
 ```
 
 ## License

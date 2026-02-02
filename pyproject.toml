@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mlnative"
-version = "0.2.1"
+version = "0.3.0"
 description = "Simple Python wrapper for MapLibre GL Native using native Rust renderer"
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -23,7 +23,10 @@ classifiers = [
     "Programming Language :: Rust",
     "Topic :: Scientific/Engineering :: GIS",
 ]
-dependencies = []
+dependencies = [
+    "shapely>=2.0",
+    "geopy>=2.4",
+]
 
 [project.optional-dependencies]
 web = [
@@ -119,6 +122,11 @@ line-ending = "auto"
 [tool.ruff.lint.isort]
 known-first-party = ["mlnative"]
 
+[tool.pytest.ini_options]
+markers = [
+    "integration: marks tests that render actual PNGs (requires network and native binary)",
+]
+
 [tool.mypy]
 python_version = "3.12"
 warn_return_any = true
@@ -130,3 +138,4 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 show_error_codes = true
 show_column_numbers = true
+ignore_missing_imports = true
