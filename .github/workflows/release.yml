@@ -100,11 +100,15 @@ jobs:
   build-wheels:
     name: Build platform wheels
     needs: build-binary
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     strategy:
       matrix:
-        platform: [linux-x64]
+        include:
+          - os: ubuntu-latest
+            platform: linux-x64
+          - os: ubuntu-24.04-arm
+            platform: linux-arm64
 
     steps:
       - uses: actions/checkout@v4
@@ -168,6 +172,8 @@ jobs:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
+      attestations: write
+      id-token: write
 
     steps:
       - uses: actions/checkout@v4
@@ -188,6 +194,11 @@ jobs:
       - name: List artifacts
         run: ls -lh dist/
 
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: 'dist/*'
+
       - name: Create GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -207,6 +218,7 @@ jobs:
       url: https://pypi.org/p/mlnative
     permissions:
       id-token: write
+      attestations: write
 
     steps:
       - name: Download wheel artifacts
@@ -221,6 +233,11 @@ jobs:
         with:
           name: sdist
           path: dist
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: 'dist/*'
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

@@ -105,6 +105,7 @@ ci-build-wheel PLATFORM:
     
     platform_map = {
         "linux-x64": "manylinux_2_28_x86_64",
+        "linux-arm64": "manylinux_2_28_aarch64",
         "darwin-x64": "macosx_10_12_x86_64",
         "darwin-arm64": "macosx_11_0_arm64",
         "win32-x64": "win_amd64"
