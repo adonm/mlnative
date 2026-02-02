@@ -61,8 +61,10 @@ class TestFitBoundsIntegration:
         sydney = Point(151.2153, -33.8568)  # lon, lat
         london = Point(-0.1246, 51.5007)  # lon, lat
 
-        # Create markers GeoJSON - red circles
-        markers_geojson = feature_collection([sydney, london])
+        # Create markers GeoJSON - red circles (use MultiPoint for multiple points)
+        from shapely import MultiPoint
+
+        markers_geojson = feature_collection(MultiPoint([sydney, london]))
 
         # Create style with markers source
         style = {

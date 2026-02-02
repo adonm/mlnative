@@ -82,6 +82,11 @@ jobs:
       - name: Fix binary permissions
         run: chmod +x mlnative/bin/mlnative-render-linux-x64
 
+      - name: Test binary directly
+        run: |
+          echo "Testing binary directly..."
+          echo '{"cmd": "init", "width": 256, "height": 256, "style": "https://tiles.openfreemap.org/styles/liberty", "pixel_ratio": 1.0}' | ./mlnative/bin/mlnative-render-linux-x64 || echo "Binary test failed"
+
       - name: Run smoke test
         run: |
           echo "Testing basic render functionality..."
