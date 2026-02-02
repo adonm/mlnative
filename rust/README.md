@@ -22,8 +22,15 @@ The daemon accepts JSON commands on stdin and outputs JSON responses on stdout.
 
 #### Initialize
 ```json
-{"cmd": "init", "width": 512, "height": 512, "style": "https://..."}
+{"cmd": "init", "width": 512, "height": 512, "style": "https://...", "pixel_ratio": 2.0}
 ```
+
+**Parameters:**
+- `width`, `height`: Logical dimensions in CSS pixels
+- `style`: URL or JSON string of map style
+- `pixel_ratio` (optional): Scale factor for HiDPI rendering (default 1.0)
+  - Output image will be `width × pixel_ratio` by `height × pixel_ratio` pixels
+  - Use 2.0 for retina displays, 3.0 for ultra-HD
 
 #### Render Single View
 ```json

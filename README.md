@@ -16,9 +16,18 @@ pip install mlnative
 
 ```python
 from mlnative import Map
+from geopy.geocoders import ArcGIS
 
+# Geocode an address
+geolocator = ArcGIS()
+location = geolocator.geocode("San Francisco")
+
+# Render map at that location
 with Map(512, 512) as m:
-    png = m.render(center=[-122.4, 37.8], zoom=12)
+    png = m.render(
+        center=[location.longitude, location.latitude],
+        zoom=12
+    )
     open("map.png", "wb").write(png)
 ```
 
@@ -73,33 +82,71 @@ with Map(800, 600) as m:
     png = m.render(center=center, zoom=zoom)
 ```
 
-### Batch render multiple views
+### Batch render multiple cities
 
 ```python
+from geopy.geocoders import ArcGIS
+
+geolocator = ArcGIS()
+
+# Geocode multiple cities
+cities = ["London", "New York", "Tokyo"]
+locations = [geolocator.geocode(city) for city in cities]
+
+# Create views for each city
 views = [
-    {"center": [0, 0], "zoom": 1},
-    {"center": [-122.4, 37.8], "zoom": 12},
-    {"center": [151.2, -33.9], "zoom": 10, "bearing": 45},
+    {"center": [loc.longitude, loc.latitude], "zoom": 10}
+    for loc in locations
 ]
 
 with Map(512, 512) as m:
     pngs = m.render_batch(views)  # Returns list of PNG bytes
+    # pngs[0] = London, pngs[1] = New York, pngs[2] = Tokyo
 ```
 
-### HiDPI rendering
+### HiDPI / Retina rendering
+
+Use `pixel_ratio` to render high-resolution images for crisp display on retina/HiDPI screens.
 
 ```python
-# Retina/HiDPI display (2x resolution)
+from geopy.geocoders import ArcGIS
+
+geolocator = ArcGIS()
+location = geolocator.geocode("Paris")
+
+# Standard display (1x) - 512x512 image
+with Map(512, 512, pixel_ratio=1) as m:
+    png = m.render(
+        center=[location.longitude, location.latitude],
+        zoom=13
+    )
+
+# Retina/HiDPI display (2x) - 1024x1024 image
 with Map(512, 512, pixel_ratio=2) as m:
-    png = m.render(center=[0, 0], zoom=5)
-    # Image is 1024x1024, text appears sharp
+    png = m.render(
+        center=[location.longitude, location.latitude],
+        zoom=13
+    )
+    # Same geographic area, but text appears sharper
 ```
+
+**Key points:**
+- `pixel_ratio=2` creates an image 2x larger in each dimension (4x total pixels)
+- Shows the exact same geographic area as `pixel_ratio=1`
+- Text, icons, and lines are rendered sharper, not smaller
+- Common values: 1 (standard), 2 (retina), 3 (ultra-HD)
 
 ## API Reference
 
 ### Map(width, height, pixel_ratio=1.0)
 
 Create map renderer. Context manager ensures cleanup.
+
+**Parameters:**
+- `width`, `height`: Output dimensions in CSS/logical pixels
+- `pixel_ratio`: Scale factor for HiDPI (1=normal, 2=retina, 3=ultra-HD)
+  - Output image dimensions will be `width × pixel_ratio` by `height × pixel_ratio`
+  - Geographic coverage remains the same regardless of pixel_ratio
 
 ### render(center, zoom, bearing=0, pitch=0)
 
@@ -171,9 +218,25 @@ fc = from_latlng([(37.8, -122.4), (40.7, -74.0)])
 
 ## Notes
 
+### pixel_ratio and HiDPI rendering
+
+The `pixel_ratio` parameter controls the resolution of the output image:
+
+| pixel_ratio | Output size | Use case |
+|-------------|-------------|----------|
+| 1 | 512x512 → 512x512 | Standard displays |
+| 2 | 512x512 → 1024x1024 | Retina/HiDPI displays |
+| 3 | 512x512 → 1536x1536 | Ultra-HD displays |
+
+- Higher `pixel_ratio` = larger output image
+- Same geographic area shown regardless of pixel_ratio
+- Text and icons scale properly (sharper, not smaller)
+- fit_bounds() automatically accounts for pixel_ratio
+
+### Other notes
+
 - **Default style**: OpenFreeMap Liberty (no configuration needed)
 - **GeoJSON updates**: Requires style loaded as dict, not URL
-- **pixel_ratio**: Higher values = larger image, same geographic area
 - **Platform**: Linux only (macOS/Windows builds disabled due to upstream issues)
 
 ## License

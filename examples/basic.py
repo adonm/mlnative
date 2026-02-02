@@ -2,41 +2,40 @@
 """
 Basic usage example for mlnative.
 
-Renders a simple map using OpenFreeMap Liberty style.
+Renders maps using addresses instead of hardcoded coordinates.
 """
+
+from geopy.geocoders import ArcGIS
 
 from mlnative import Map
 
 
 def main():
-    print("Rendering map with OpenFreeMap Liberty style...")
+    print("Rendering maps from addresses...")
+    geolocator = ArcGIS()
 
-    # Create map with context manager (auto cleanup)
+    # Example 1: Simple map
+    print("\n1. Rendering San Francisco...")
+    location = geolocator.geocode("San Francisco")
+
     with Map(width=512, height=512) as m:
-        # Load OpenFreeMap Liberty style (default)
-        m.load_style("https://tiles.openfreemap.org/styles/liberty")
-
-        # Render San Francisco
-        print("Rendering San Francisco...")
         png_bytes = m.render(
-            center=[-122.4194, 37.7749],  # [lon, lat]
+            center=[location.longitude, location.latitude],
             zoom=12,
         )
 
-        # Save to file
         output_path = "san_francisco.png"
         with open(output_path, "wb") as f:
             f.write(png_bytes)
+        print(f"   Saved to {output_path} ({len(png_bytes)} bytes)")
 
-        print(f"Saved to {output_path} ({len(png_bytes)} bytes)")
+    # Example 2: With rotation and tilt
+    print("\n2. Rendering New York (with rotation and tilt)...")
+    location = geolocator.geocode("New York City")
 
-    # Or without context manager (manual cleanup)
-    print("\nRendering New York...")
-    m = Map(width=800, height=600)
-    try:
-        m.load_style("https://tiles.openfreemap.org/styles/liberty")
+    with Map(width=800, height=600) as m:
         png_bytes = m.render(
-            center=[-74.0060, 40.7128],
+            center=[location.longitude, location.latitude],
             zoom=11,
             bearing=45,  # Rotate 45 degrees
             pitch=30,  # Tilt 30 degrees
@@ -45,10 +44,23 @@ def main():
         output_path = "new_york.png"
         with open(output_path, "wb") as f:
             f.write(png_bytes)
+        print(f"   Saved to {output_path} ({len(png_bytes)} bytes)")
 
-        print(f"Saved to {output_path} ({len(png_bytes)} bytes)")
-    finally:
-        m.close()
+    # Example 3: HiDPI / Retina rendering
+    print("\n3. Rendering Sydney in HiDPI (2x resolution)...")
+    location = geolocator.geocode("Sydney Opera House")
+
+    with Map(width=512, height=512, pixel_ratio=2) as m:
+        png_bytes = m.render(
+            center=[location.longitude, location.latitude],
+            zoom=15,
+        )
+
+        output_path = "sydney_hidpi.png"
+        with open(output_path, "wb") as f:
+            f.write(png_bytes)
+        print(f"   Saved to {output_path} ({len(png_bytes)} bytes)")
+        print("   Image is 1024x1024 pixels - sharp on retina displays")
 
     print("\nDone!")
 

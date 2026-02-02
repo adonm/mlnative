@@ -80,11 +80,16 @@ impl Renderer {
         self.width = width;
         self.height = height;
 
-        // Convert to NonZeroU32
+        eprintln!("DEBUG: Init renderer - logical: {}x{}, pixel_ratio: {}",
+                 width, height, pixel_ratio);
+
+        // Convert logical dimensions to NonZeroU32
+        // with_pixel_ratio will handle the internal scaling
         let width_nz = NonZeroU32::new(width).ok_or("Width must be non-zero")?;
         let height_nz = NonZeroU32::new(height).ok_or("Height must be non-zero")?;
 
-        // Use with_pixel_ratio for proper HiDPI rendering
+        // Use logical dimensions with with_pixel_ratio
+        // The library handles internal scaling based on pixel_ratio
         let builder = ImageRendererBuilder::new()
             .with_size(width_nz, height_nz)
             .with_pixel_ratio(pixel_ratio as f32);
@@ -127,7 +132,13 @@ impl Renderer {
             .ok_or(RenderingError::StyleNotSpecified)?;
 
         // Note: render_static takes (lat, lon, zoom, bearing, pitch)
-        renderer.render_static(center[1], center[0], zoom, bearing, pitch)
+        let image = renderer.render_static(center[1], center[0], zoom, bearing, pitch)?;
+        
+        // Debug: Log actual image dimensions
+        let img_buffer = image.as_image();
+        eprintln!("DEBUG: Rendered image size: {}x{}", img_buffer.width(), img_buffer.height());
+        
+        Ok(image)
     }
 
     fn update_geojson_sources(
