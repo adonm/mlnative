@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mlnative"
-version = "0.3.1"
+version = "0.3.2"
 description = "Simple Python wrapper for MapLibre GL Native using native Rust renderer"
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -40,7 +40,7 @@ dev = [
     "httpx>=0.27",
     "ruff>=0.8.0",
     "mypy>=1.13.0",
-    "cibuildwheel>=2.16",
+    "pillow>=11.0",
 ]
 
 [project.urls]
@@ -77,23 +77,6 @@ exclude = [
     "/AGENTS.md",
     "/test_rust_backend.py",
 ]
-
-[tool.cibuildwheel]
-# Build for Python 3.12+
-build = "cp312-* cp313-*"
-# Skip 32-bit and musl builds
-skip = "*-win32 *-manylinux_i686 *-musllinux_*"
-# Run tests after build
-test-command = "python -c 'from mlnative import Map; print(\"Import OK\")'"
-# Environment variables for Rust build
-[tool.cibuildwheel.linux]
-before-all = "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"
-environment = { PATH = "/root/.cargo/bin:$PATH" }
-[tool.cibuildwheel.macos]
-before-all = "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"
-environment = { PATH = "$HOME/.cargo/bin:$PATH" }
-[tool.cibuildwheel.windows]
-before-all = "choco install rust"
 
 [tool.ruff]
 target-version = "py312"

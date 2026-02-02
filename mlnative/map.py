@@ -107,7 +107,7 @@ class Map:
             elif isinstance(style, Path):
                 style = json.dumps(json.loads(style.read_text()))
 
-            self._daemon.start(self.width, self.height, str(style))
+            self._daemon.start(self.width, self.height, str(style), self.pixel_ratio)
 
         return self._daemon
 
@@ -218,6 +218,7 @@ class Map:
                    - zoom: float
                    - bearing: float (optional, default 0)
                    - pitch: float (optional, default 0)
+                   - geojson: dict[str, Any] (optional) - GeoJSON sources to update before render
 
         Returns:
             List of PNG image bytes
@@ -226,6 +227,13 @@ class Map:
             views = [
                 {"center": [0, 0], "zoom": 5},
                 {"center": [10, 10], "zoom": 8, "bearing": 45},
+                {
+                    "center": [20, 20],
+                    "zoom": 10,
+                    "geojson": {
+                        "markers": {"type": "FeatureCollection", "features": [...]}
+                    }
+                },
             ]
             pngs = map.render_batch(views)
         """
@@ -234,6 +242,14 @@ class Map:
 
         if self._style is None:
             self._style = DEFAULT_STYLE
+
+        # Check if any view has geojson - requires dict style
+        has_geojson = any(view.get("geojson") for view in views)
+        if has_geojson and isinstance(self._style, str):
+            raise MlnativeError(
+                "Cannot use geojson in render_batch with URL-loaded style. "
+                "Load the style as a dict first."
+            )
 
         # Validate and normalize views
         normalized_views = []
@@ -258,18 +274,48 @@ class Map:
 
             bearing = view.get("bearing", 0) % 360
 
-            normalized_views.append(
-                {
-                    "center": center,
-                    "zoom": zoom,
-                    "bearing": bearing,
-                    "pitch": pitch,
-                }
-            )
+            normalized_view = {
+                "center": center,
+                "zoom": zoom,
+                "bearing": bearing,
+                "pitch": pitch,
+            }
+
+            # Handle geojson if present
+            if "geojson" in view:
+                geojson = view["geojson"]
+                if isinstance(geojson, dict):
+                    normalized_view["geojson"] = geojson
+                else:
+                    raise MlnativeError(f"View {i}: geojson must be a dict")
+
+            normalized_views.append(normalized_view)
 
         try:
-            daemon = self._get_daemon()
-            return daemon.render_batch(normalized_views)
+            # Workaround: If any view has geojson, we can't use efficient batch rendering
+            # because maplibre_native doesn't support dynamic source updates.
+            # Fall back to individual renders with set_geojson() calls.
+            if has_geojson:
+                pngs = []
+                for _i, view in enumerate(normalized_views):
+                    # Update geojson sources if present
+                    if "geojson" in view:
+                        for source_id, geojson_data in view["geojson"].items():
+                            self.set_geojson(source_id, geojson_data)
+
+                    # Render this view
+                    png = self.render(
+                        center=view["center"],
+                        zoom=view["zoom"],
+                        bearing=view["bearing"],
+                        pitch=view["pitch"],
+                    )
+                    pngs.append(png)
+                return pngs
+            else:
+                # Use efficient batch rendering for views without geojson
+                daemon = self._get_daemon()
+                return daemon.render_batch(normalized_views)
         except Exception as e:
             raise MlnativeError(f"Batch render failed: {e}") from e
 
@@ -358,6 +404,10 @@ class Map:
 
         # Use the smaller zoom to ensure bounds fit in both dimensions
         zoom = min(x_zoom, y_zoom, max_zoom)
+
+        # Adjust for pixel_ratio: higher pixel_ratio means we need lower zoom
+        # to show the same geographic area (pixel_ratio=2 shows 2x less area at same zoom)
+        zoom = zoom - math.log2(self.pixel_ratio)
 
         # Clamp to valid zoom range
         zoom = max(0.0, min(float(zoom), MAX_ZOOM))

@@ -57,6 +57,9 @@ def get_binary_path() -> Path:
     binary_path = pkg_dir / "bin" / binary_name
 
     if binary_path.exists():
+        # Ensure binary is executable (permissions may be stripped in wheels)
+        if sys.platform != "win32" and not os.access(binary_path, os.X_OK):
+            os.chmod(binary_path, 0o755)
         return binary_path
 
     # Check in PATH
@@ -78,7 +81,7 @@ class RenderDaemon:
         self._process: subprocess.Popen | None = None
         self._initialized = False
 
-    def start(self, width: int, height: int, style: str) -> None:
+    def start(self, width: int, height: int, style: str, pixel_ratio: float = 1.0) -> None:
         """Start the daemon and initialize the renderer."""
         if self._process is not None:
             raise MlnativeError("Daemon already started")
@@ -103,6 +106,7 @@ class RenderDaemon:
             "width": width,
             "height": height,
             "style": style,
+            "pixel_ratio": pixel_ratio,
         }
 
         response = self._send_command(init_cmd)
