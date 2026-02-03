@@ -294,3 +294,72 @@ The daemon accepts JSON commands on stdin and outputs JSON responses on stdout.
 {"status": "ok", "png": "base64_encoded_data"}
 {"status": "error", "error": "message"}
 ```
+
+## Release Process
+
+### Version Management
+
+**Critical:** Always keep `pyproject.toml` version and git tags in sync:
+
+1. **Update version in `pyproject.toml`** before creating a git tag
+2. **Use semantic versioning** (MAJOR.MINOR.PATCH)
+3. **Tag format:** `v{version}` (e.g., `v0.3.8`)
+
+### Release Checklist
+
+```bash
+# 1. Update version in pyproject.toml
+version = "0.3.8"  # Update this line
+
+# 2. Commit the version bump
+git add pyproject.toml
+git commit -m "Bump version to 0.3.8"
+
+# 3. Create annotated tag
+git tag -a v0.3.8 -m "Release v0.3.8 - Description of changes"
+
+# 4. Push to origin
+git push origin main --tags
+```
+
+### Cleaning Up Old Releases
+
+If you need to remove unstable pre-releases:
+
+**Delete GitHub releases (keeps git tags):**
+```bash
+# List releases
+gh release list
+
+# Delete specific release
+gh release delete v0.3.7 --yes
+```
+
+**Yank PyPI versions (prevents installation, keeps history):**
+```bash
+# Install twine if needed
+pip install twine
+
+# Yank a version
+twine yank mlnative-0.3.7
+
+# Or use PyPI web interface:
+# https://pypi.org/manage/project/mlnative/releases/
+```
+
+**Delete git tags (optional, destructive):**
+```bash
+# Delete local tag
+git tag -d v0.3.7
+
+# Delete remote tag
+git push --delete origin v0.3.7
+```
+
+### CI/CD Trigger
+
+Pushing a tag starting with `v` automatically triggers:
+1. Build binaries for all platforms
+2. Build wheels and sdist
+3. Create GitHub Release with artifacts
+4. Publish to PyPI
