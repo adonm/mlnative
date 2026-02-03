@@ -185,6 +185,28 @@ class RenderDaemon:
         pngs_b64 = response.get("png", "").split(",")
         return [base64.b64decode(png) for png in pngs_b64 if png]
 
+    def reload_style(self, style: str) -> None:
+        """Reload the style without restarting the daemon.
+
+        Args:
+            style: Style URL string or JSON string
+
+        Raises:
+            MlnativeError: If style reload fails
+        """
+        if not self._initialized:
+            raise MlnativeError("Renderer not initialized")
+
+        cmd = {
+            "cmd": "reload_style",
+            "style": style,
+        }
+
+        response = self._send_command(cmd)
+
+        if response.get("status") != "ok":
+            raise MlnativeError(f"Style reload failed: {response.get('error')}")
+
     def stop(self) -> None:
         """Stop the daemon."""
         if self._process is not None and self._process.poll() is None:

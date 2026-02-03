@@ -19,6 +19,8 @@ enum Command {
         #[serde(default = "default_pixel_ratio")]
         pixel_ratio: f64,
     },
+    #[serde(rename = "reload_style")]
+    ReloadStyle { style: String },
     #[serde(rename = "render")]
     Render {
         center: [f64; 2],
@@ -151,6 +153,34 @@ impl Renderer {
         // modifying the underlying maplibre_native renderer
         Ok(())
     }
+
+    fn reload_style(&mut self, style: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let renderer = self
+            .renderer
+            .as_mut()
+            .ok_or("Renderer not initialized")?;
+
+        // Check if style is URL or file path (JSON strings need to be saved to temp file)
+        if style.starts_with("http://")
+            || style.starts_with("https://")
+            || style.starts_with("file://")
+        {
+            let url = style.parse().map_err(|_| "Invalid style URL")?;
+            renderer.load_style_from_url(&url);
+        } else if style.starts_with("{") {
+            // JSON string - save to temp file
+            let temp_dir = std::env::temp_dir();
+            let temp_file = temp_dir.join(format!("mlnative_style_{}.json", std::process::id()));
+            std::fs::write(&temp_file, style)?;
+            renderer.load_style_from_path(&temp_file)?;
+            // Note: temp file will be cleaned up by OS eventually
+        } else {
+            // Assume it's a file path
+            renderer.load_style_from_path(style)?;
+        }
+
+        Ok(())
+    }
 }
 
 fn main() {
@@ -233,6 +263,24 @@ fn main() {
                         status: "error".to_string(),
                         png: None,
                         error: Some(format!("Render failed: {:?}", e)),
+                    };
+                    println!("{}", serde_json::to_string(&resp).unwrap());
+                }
+            },
+            Command::ReloadStyle { style } => match renderer.reload_style(&style) {
+                Ok(_) => {
+                    let resp = Response {
+                        status: "ok".to_string(),
+                        png: None,
+                        error: None,
+                    };
+                    println!("{}", serde_json::to_string(&resp).unwrap());
+                }
+                Err(e) => {
+                    let resp = Response {
+                        status: "error".to_string(),
+                        png: None,
+                        error: Some(format!("Reload style failed: {:?}", e)),
                     };
                     println!("{}", serde_json::to_string(&resp).unwrap());
                 }

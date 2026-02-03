@@ -148,10 +148,15 @@ class Map:
         else:
             raise MlnativeError(f"Style must be str, dict, or Path, got {type(style)}")
 
-        # Reset daemon so it picks up new style
+        # Reload style in daemon if already running, otherwise it will pick up on next _get_daemon()
         if self._daemon is not None:
-            self._daemon.stop()
-            self._daemon = None
+            # Get style string for daemon
+            style_for_daemon = self._style
+            if isinstance(style_for_daemon, dict):
+                style_for_daemon = json.dumps(style_for_daemon)
+            elif isinstance(style_for_daemon, Path):
+                style_for_daemon = json.dumps(json.loads(style_for_daemon.read_text()))
+            self._daemon.reload_style(str(style_for_daemon))
 
     def render(
         self, center: list[float], zoom: float, bearing: float = 0, pitch: float = 0
@@ -488,10 +493,9 @@ class Map:
             "data": geojson,
         }
 
-        # Reset daemon to pick up new style
+        # Reload style in daemon if already running
         if self._daemon is not None:
-            self._daemon.stop()
-            self._daemon = None
+            self._daemon.reload_style(json.dumps(self._style))
 
     def close(self) -> None:
         """Close the map and release resources."""
