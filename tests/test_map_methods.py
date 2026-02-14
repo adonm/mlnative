@@ -163,15 +163,15 @@ class TestSetGeojson:
         with pytest.raises(MlnativeError, match="closed"):
             m.set_geojson("markers", {"type": "FeatureCollection", "features": []})
 
-    def test_set_geojson_resets_daemon(self):
-        """Test that daemon is reset after setting geojson."""
+    def test_set_geojson_updates_style(self):
+        """Test that style is updated after setting geojson."""
         m = Map(width=512, height=512)
         m.load_style({"version": 8, "sources": {}, "layers": []})
 
-        # Force daemon creation
-        m._get_daemon()
-        assert m._daemon is not None
-
-        # Set geojson should reset daemon
+        # Set geojson should update the style dict
         m.set_geojson("markers", {"type": "FeatureCollection", "features": []})
-        assert m._daemon is None
+
+        # Verify the style was updated
+        style = m._style
+        assert isinstance(style, dict)
+        assert "markers" in style.get("sources", {})

@@ -63,9 +63,11 @@ class TestFromCoordinates:
 
     def test_properties_length_mismatch(self):
         """Test error when properties list length doesn't match coordinates."""
+        from mlnative.exceptions import MlnativeError
+
         coords = [(-122.4194, 37.7749), (-74.0060, 40.7128)]
         props = [{"name": "SF"}]
-        with pytest.raises(ValueError, match="Number of properties"):
+        with pytest.raises(MlnativeError, match="Number of properties"):
             from_coordinates(coords, props)
 
 

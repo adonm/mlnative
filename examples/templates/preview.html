@@ -40,8 +40,8 @@
                 <img src="{{ map_url }}" alt="Generated map" style="max-width: 100%; height: auto;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
                 <p style="display: none; color: var(--pico-color-red-500);">
                     <strong>Failed to load map image.</strong><br>
-                    This usually means the vendor binaries are not installed.<br>
-                    Run: <code>just build-vendor</code>
+                    This usually means the native renderer binary is not installed.<br>
+                    Run: <code>just build-rust</code>
                 </p>
                 {% endif %}
                 <p><small>

@@ -231,7 +231,7 @@ m.load_style({"version": 8, "sources": {...}, "layers": [...]})
 ## GeoJSON Helpers
 
 ```python
-from mlnative import point, feature_collection, from_coordinates, from_latlng
+from mlnative import point, feature_collection, from_coordinates, from_latlng, bounds_to_polygon
 
 # Create point
 sf = point(-122.4194, 37.7749, {"name": "San Francisco"})
@@ -241,6 +241,9 @@ fc = from_coordinates([(-122.4, 37.8), (-74.0, 40.7)])
 
 # From GPS (lat, lng) order
 fc = from_latlng([(37.8, -122.4), (40.7, -74.0)])
+
+# Convert bounds to polygon
+poly = bounds_to_polygon((-122.5, 37.7, -122.3, 37.9))
 ```
 
 ## Notes

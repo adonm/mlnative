@@ -12,6 +12,8 @@ from shapely import Point
 from shapely.geometry import mapping
 from shapely.geometry.base import BaseGeometry
 
+from .exceptions import MlnativeError
+
 
 def point(lng: float, lat: float, properties: dict[str, Any] | None = None) -> dict[str, Any]:
     """Create a GeoJSON Point feature.
@@ -143,7 +145,7 @@ def from_coordinates(
         properties = [{} for _ in coordinates]
 
     if len(properties) != len(coordinates):
-        raise ValueError(
+        raise MlnativeError(
             f"Number of properties ({len(properties)}) must match "
             f"number of coordinates ({len(coordinates)})"
         )

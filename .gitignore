@@ -69,3 +69,5 @@ mlnative/bin/*
 
 # Allow docs images to be committed
 !docs/images/*.png
+test-output/
+vendor/

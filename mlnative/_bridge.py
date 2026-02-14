@@ -5,14 +5,20 @@ Handles subprocess communication with the native renderer.
 Uses pre-built Rust binaries with statically linked MapLibre Native.
 """
 
+import base64
 import json
 import os
 import subprocess
 import sys
+import threading
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
 from .exceptions import MlnativeError
+
+DEFAULT_TIMEOUT = 30.0
+PROTOCOL_VERSION = "1.0"
 
 
 def _get_platform_info() -> tuple[str, str]:
@@ -70,7 +76,9 @@ def get_binary_path() -> Path:
 
     raise MlnativeError(
         f"Native renderer binary not found: {binary_name}\n"
-        f"Please install with: pip install mlnative-binary"
+        f"Searched in: {pkg_dir / 'bin'}\n"
+        f"Ensure the binary is included in the package or available in PATH.\n"
+        f"For source builds, run: just build-rust"
     )
 
 
@@ -80,6 +88,13 @@ class RenderDaemon:
     def __init__(self) -> None:
         self._process: subprocess.Popen | None = None
         self._initialized = False
+        self._stderr_thread: threading.Thread | None = None
+
+    def _drain_stderr(self) -> None:
+        """Background thread to drain stderr and prevent deadlock."""
+        if self._process is not None and self._process.stderr is not None:
+            for _line in self._process.stderr:
+                pass  # Discard stderr silently
 
     def start(self, width: int, height: int, style: str, pixel_ratio: float = 1.0) -> None:
         """Start the daemon and initialize the renderer."""
@@ -97,6 +112,9 @@ class RenderDaemon:
                 text=True,
                 bufsize=1,
             )
+            # Start background thread to drain stderr and prevent deadlock
+            self._stderr_thread = threading.Thread(target=self._drain_stderr, daemon=True)
+            self._stderr_thread.start()
         except OSError as e:
             raise MlnativeError(f"Failed to start renderer: {e}") from e
 
@@ -107,27 +125,62 @@ class RenderDaemon:
             "height": height,
             "style": style,
             "pixel_ratio": pixel_ratio,
+            "protocol_version": PROTOCOL_VERSION,
         }
 
         response = self._send_command(init_cmd)
         if response.get("status") != "ok":
             self.stop()
-            raise MlnativeError(f"Failed to initialize renderer: {response.get('error')}")
+            error_msg = response.get("error", "Unknown error")
+            if "protocol version" in error_msg.lower():
+                error_msg = (
+                    f"{error_msg}\n"
+                    f"Client protocol: {PROTOCOL_VERSION}\n"
+                    f"This usually means the Rust binary is outdated. "
+                    f"Rebuild with: just build-rust"
+                )
+            raise MlnativeError(f"Failed to initialize renderer: {error_msg}")
 
         self._initialized = True
 
-    def _send_command(self, cmd: dict[str, Any]) -> dict[str, Any]:
-        """Send a command to the daemon and get response."""
+    def _send_command(
+        self, cmd: dict[str, Any], timeout: float = DEFAULT_TIMEOUT
+    ) -> dict[str, Any]:
+        """Send a command to the daemon and get response.
+
+        Args:
+            cmd: Command dictionary to send
+            timeout: Maximum time to wait for response in seconds
+
+        Raises:
+            MlnativeError: If daemon not started, timeout, or invalid response
+        """
         if self._process is None or self._process.stdin is None or self._process.stdout is None:
             raise MlnativeError("Daemon not started")
 
-        # Send command
+        # Send command (write is typically fast, no timeout needed)
         cmd_json = json.dumps(cmd) + "\n"
-        self._process.stdin.write(cmd_json)
-        self._process.stdin.flush()
+        try:
+            self._process.stdin.write(cmd_json)
+            self._process.stdin.flush()
+        except BrokenPipeError:
+            raise MlnativeError("Renderer process closed unexpectedly") from None
 
-        # Read response
-        response_line = self._process.stdout.readline()
+        # Read response with timeout using a thread
+        response_line: str = ""
+
+        def read_line() -> None:
+            nonlocal response_line
+            assert self._process is not None and self._process.stdout is not None
+            with suppress(Exception):
+                response_line = self._process.stdout.readline()
+
+        read_thread = threading.Thread(target=read_line, daemon=True)
+        read_thread.start()
+        read_thread.join(timeout=timeout)
+        if read_thread.is_alive():
+            raise MlnativeError(f"Timeout waiting for renderer response after {timeout}s")
+
         if not response_line:
             raise MlnativeError("Renderer process closed unexpectedly")
 
@@ -157,8 +210,6 @@ class RenderDaemon:
         if response.get("status") != "ok":
             raise MlnativeError(f"Render failed: {response.get('error')}")
 
-        import base64
-
         png_b64 = response.get("png")
         if not png_b64:
             raise MlnativeError("Render returned no image data")
@@ -179,8 +230,6 @@ class RenderDaemon:
 
         if response.get("status") != "ok":
             raise MlnativeError(f"Batch render failed: {response.get('error')}")
-
-        import base64
 
         pngs_b64 = response.get("png", "").split(",")
         return [base64.b64decode(png) for png in pngs_b64 if png]

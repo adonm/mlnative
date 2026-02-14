@@ -143,3 +143,33 @@ stats:
 test-docker:
     docker build -f Dockerfile.test -t mlnative-test .
     docker run --rm mlnative-test
+
+# Generate visual comparison renders (mlnative vs Chrome)
+visual-render:
+    #!/usr/bin/env bash
+    set -e
+    if ! uv run python -c "import playwright" 2>/dev/null; then
+        echo "Installing playwright..."
+        uv pip install playwright
+    fi
+    if ! uv run python -c "from playwright.sync_api import sync_playwright; p=sync_playwright().start(); p.chromium.executable_path; p.stop()" 2>/dev/null; then
+        echo "Installing chromium browser..."
+        uv run playwright install chromium
+    fi
+    uv run python scripts/visual_compare.py
+
+# Compare renders using AI (requires opencode with kimi model)
+visual-compare:
+    @echo "Comparing renders with AI..."
+    @echo ""
+    @echo "Simple map:"
+    opencode run -m kimi-for-coding/k2p5 "Compare test-output/simple-mlnative.png with test-output/simple-chrome.png. What rendering differences exist? Focus on layout, colors, and text."
+    @echo ""
+    @echo "Zoomed out map:"
+    opencode run -m kimi-for-coding/k2p5 "Compare test-output/zoomed-out-mlnative.png with test-output/zoomed-out-chrome.png. What rendering differences exist?"
+    @echo ""
+    @echo "With bearing:"
+    opencode run -m kimi-for-coding/k2p5 "Compare test-output/with-bearing-mlnative.png with test-output/with-bearing-chrome.png. What rendering differences exist?"
+
+# Full visual test: render + compare
+visual-test: visual-render visual-compare

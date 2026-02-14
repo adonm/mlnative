@@ -2,13 +2,11 @@
 Main Map class for mlnative.
 
 Uses native Rust renderer with statically linked MapLibre Native.
-Provides synchronous and async APIs for static map rendering.
+Provides synchronous API for static map rendering.
 """
 
 import json
 import math
-import warnings
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -56,7 +54,6 @@ class Map:
         self,
         width: int,
         height: int,
-        request_handler: Callable[[Any], bytes] | None = None,
         pixel_ratio: float = 1.0,
     ):
         """
@@ -65,9 +62,7 @@ class Map:
         Args:
             width: Image width in pixels (1-4096)
             height: Image height in pixels (1-4096)
-            request_handler: Optional function to handle custom tile requests.
-                           Not yet implemented.
-            pixel_ratio: Pixel ratio for high-DPI rendering (default 1.0)
+            pixel_ratio: Pixel ratio for high-DPI rendering (default 1.0, max 4.0)
         """
         if width <= 0 or height <= 0:
             raise MlnativeError(f"Width and height must be positive, got {width}x{height}")
@@ -77,12 +72,9 @@ class Map:
                 f"Width and height must be <= {MAX_DIMENSION}, got {width}x{height}"
             )
 
-        if request_handler is not None:
-            warnings.warn(
-                "request_handler is not yet implemented and will be ignored. "
-                "This feature is planned for a future release.",
-                FutureWarning,
-                stacklevel=2,
+        if pixel_ratio <= 0 or pixel_ratio > 4:
+            raise MlnativeError(
+                f"pixel_ratio must be between 0 and 4 (exclusive), got {pixel_ratio}"
             )
 
         self.width = width
@@ -97,17 +89,14 @@ class Map:
         if self._daemon is None:
             self._daemon = RenderDaemon()
 
-            # Get style string
             style = self._style
             if style is None:
                 style = DEFAULT_STYLE
 
             if isinstance(style, dict):
                 style = json.dumps(style)
-            elif isinstance(style, Path):
-                style = json.dumps(json.loads(style.read_text()))
 
-            self._daemon.start(self.width, self.height, str(style), self.pixel_ratio)
+            self._daemon.start(self.width, self.height, style, self.pixel_ratio)
 
         return self._daemon
 
@@ -148,15 +137,13 @@ class Map:
         else:
             raise MlnativeError(f"Style must be str, dict, or Path, got {type(style)}")
 
-        # Reload style in daemon if already running, otherwise it will pick up on next _get_daemon()
         if self._daemon is not None:
-            # Get style string for daemon
-            style_for_daemon = self._style
-            if isinstance(style_for_daemon, dict):
-                style_for_daemon = json.dumps(style_for_daemon)
-            elif isinstance(style_for_daemon, Path):
-                style_for_daemon = json.dumps(json.loads(style_for_daemon.read_text()))
-            self._daemon.reload_style(str(style_for_daemon))
+            daemon_style: str
+            if isinstance(self._style, dict):
+                daemon_style = json.dumps(self._style)
+            else:
+                daemon_style = self._style or DEFAULT_STYLE
+            self._daemon.reload_style(daemon_style)
 
     def render(
         self, center: list[float], zoom: float, bearing: float = 0, pitch: float = 0

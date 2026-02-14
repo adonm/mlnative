@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::io::{self, BufRead, Write};
 use std::num::NonZeroU32;
 
+const PROTOCOL_VERSION: &str = "1.0";
+
 fn default_pixel_ratio() -> f64 {
     1.0
 }
@@ -18,6 +20,8 @@ enum Command {
         style: String,
         #[serde(default = "default_pixel_ratio")]
         pixel_ratio: f64,
+        #[serde(default)]
+        protocol_version: Option<String>,
     },
     #[serde(rename = "reload_style")]
     ReloadStyle { style: String },
@@ -61,6 +65,7 @@ struct Renderer {
     renderer: Option<ImageRenderer<Static>>,
     width: u32,
     height: u32,
+    temp_files: Vec<std::path::PathBuf>,
 }
 
 impl Renderer {
@@ -69,6 +74,43 @@ impl Renderer {
             renderer: None,
             width: 512,
             height: 512,
+            temp_files: Vec::new(),
+        }
+    }
+
+    fn cleanup_temp_files(&mut self) {
+        for path in &self.temp_files {
+            let _ = std::fs::remove_file(path);
+        }
+        self.temp_files.clear();
+    }
+
+    fn load_style(
+        renderer: &mut ImageRenderer<Static>,
+        style: &str,
+        temp_files: &mut Vec<std::path::PathBuf>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        if style.starts_with("http://")
+            || style.starts_with("https://")
+            || style.starts_with("file://")
+        {
+            let url = style.parse().map_err(|_| "Invalid style URL")?;
+            renderer.load_style_from_url(&url);
+            Ok(())
+        } else if style.starts_with("{") {
+            let temp_dir = std::env::temp_dir();
+            let temp_file = temp_dir.join(format!(
+                "mlnative_style_{}_{}.json",
+                std::process::id(),
+                temp_files.len()
+            ));
+            std::fs::write(&temp_file, style)?;
+            renderer.load_style_from_path(&temp_file)?;
+            temp_files.push(temp_file);
+            Ok(())
+        } else {
+            renderer.load_style_from_path(style)?;
+            Ok(())
         }
     }
 
@@ -82,40 +124,15 @@ impl Renderer {
         self.width = width;
         self.height = height;
 
-        eprintln!("DEBUG: Init renderer - logical: {}x{}, pixel_ratio: {}",
-                 width, height, pixel_ratio);
-
-        // Convert logical dimensions to NonZeroU32
-        // with_pixel_ratio will handle the internal scaling
         let width_nz = NonZeroU32::new(width).ok_or("Width must be non-zero")?;
         let height_nz = NonZeroU32::new(height).ok_or("Height must be non-zero")?;
 
-        // Use logical dimensions with with_pixel_ratio
-        // The library handles internal scaling based on pixel_ratio
         let builder = ImageRendererBuilder::new()
             .with_size(width_nz, height_nz)
             .with_pixel_ratio(pixel_ratio as f32);
 
         let mut renderer = builder.build_static_renderer();
-
-        // Check if style is URL or file path (JSON strings need to be saved to temp file)
-        if style.starts_with("http://")
-            || style.starts_with("https://")
-            || style.starts_with("file://")
-        {
-            let url = style.parse().map_err(|_| "Invalid style URL")?;
-            renderer.load_style_from_url(&url);
-        } else if style.starts_with("{") {
-            // JSON string - save to temp file
-            let temp_dir = std::env::temp_dir();
-            let temp_file = temp_dir.join(format!("mlnative_style_{}.json", std::process::id()));
-            std::fs::write(&temp_file, style)?;
-            renderer.load_style_from_path(&temp_file)?;
-            // Note: temp file will be cleaned up by OS eventually
-        } else {
-            // Assume it's a file path
-            renderer.load_style_from_path(style)?;
-        }
+        Self::load_style(&mut renderer, style, &mut self.temp_files)?;
 
         self.renderer = Some(renderer);
         Ok(())
@@ -133,24 +150,15 @@ impl Renderer {
             .as_mut()
             .ok_or(RenderingError::StyleNotSpecified)?;
 
-        // Note: render_static takes (lat, lon, zoom, bearing, pitch)
         let image = renderer.render_static(center[1], center[0], zoom, bearing, pitch)?;
-        
-        // Debug: Log actual image dimensions
-        let img_buffer = image.as_image();
-        eprintln!("DEBUG: Rendered image size: {}x{}", img_buffer.width(), img_buffer.height());
-        
+
         Ok(image)
     }
 
     fn update_geojson_sources(
         &mut self,
-        geojson_updates: &std::collections::HashMap<String, serde_json::Value>,
+        _geojson_updates: &std::collections::HashMap<String, serde_json::Value>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        // GeoJSON source updates require style reload in maplibre_native
-        // For now, return Ok to allow the render to continue
-        // This is a limitation - dynamic source updates would require
-        // modifying the underlying maplibre_native renderer
         Ok(())
     }
 
@@ -160,27 +168,27 @@ impl Renderer {
             .as_mut()
             .ok_or("Renderer not initialized")?;
 
-        // Check if style is URL or file path (JSON strings need to be saved to temp file)
-        if style.starts_with("http://")
-            || style.starts_with("https://")
-            || style.starts_with("file://")
-        {
-            let url = style.parse().map_err(|_| "Invalid style URL")?;
-            renderer.load_style_from_url(&url);
-        } else if style.starts_with("{") {
-            // JSON string - save to temp file
-            let temp_dir = std::env::temp_dir();
-            let temp_file = temp_dir.join(format!("mlnative_style_{}.json", std::process::id()));
-            std::fs::write(&temp_file, style)?;
-            renderer.load_style_from_path(&temp_file)?;
-            // Note: temp file will be cleaned up by OS eventually
-        } else {
-            // Assume it's a file path
-            renderer.load_style_from_path(style)?;
-        }
-
-        Ok(())
+        Self::load_style(renderer, style, &mut self.temp_files)
     }
+}
+
+fn encode_png(image: Image) -> Result<String, String> {
+    let img_buffer = image.as_image();
+    let mut png_bytes: Vec<u8> = Vec::new();
+    img_buffer
+        .write_to(
+            &mut std::io::Cursor::new(&mut png_bytes),
+            image::ImageFormat::Png,
+        )
+        .map_err(|e| format!("Failed to encode PNG: {}", e))?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(&png_bytes))
+}
+
+fn send_response(resp: &Response) {
+    println!(
+        "{}",
+        serde_json::to_string(resp).unwrap_or_else(|_| r#"{"status":"error","error":"JSON encode failed"}"#.to_string())
+    );
 }
 
 fn main() {
@@ -201,12 +209,11 @@ fn main() {
         let cmd: Command = match serde_json::from_str(&line) {
             Ok(c) => c,
             Err(e) => {
-                let resp = Response {
+                send_response(&Response {
                     status: "error".to_string(),
                     png: None,
                     error: Some(format!("Invalid command: {}", e)),
-                };
-                println!("{}", serde_json::to_string(&resp).unwrap());
+                });
                 continue;
             }
         };
@@ -217,130 +224,125 @@ fn main() {
                 height,
                 style,
                 pixel_ratio,
-            } => match renderer.init(width, height, &style, pixel_ratio) {
-                Ok(_) => {
-                    let resp = Response {
+                protocol_version,
+            } => {
+                if let Some(ref version) = protocol_version {
+                    if version != PROTOCOL_VERSION {
+                        send_response(&Response {
+                            status: "error".to_string(),
+                            png: None,
+                            error: Some(format!(
+                                "Protocol version mismatch: client={}, daemon={}",
+                                version, PROTOCOL_VERSION
+                            )),
+                        });
+                        continue;
+                    }
+                }
+                match renderer.init(width, height, &style, pixel_ratio) {
+                    Ok(_) => send_response(&Response {
                         status: "ok".to_string(),
                         png: None,
                         error: None,
-                    };
-                    println!("{}", serde_json::to_string(&resp).unwrap());
-                }
-                Err(e) => {
-                    let resp = Response {
+                    }),
+                    Err(e) => send_response(&Response {
                         status: "error".to_string(),
                         png: None,
                         error: Some(format!("Init failed: {:?}", e)),
-                    };
-                    println!("{}", serde_json::to_string(&resp).unwrap());
+                    }),
                 }
-            },
+            }
             Command::Render {
                 center,
                 zoom,
                 bearing,
                 pitch,
             } => match renderer.render(center, zoom, bearing, pitch) {
-                Ok(image) => {
-                    let img_buffer = image.as_image();
-                    let mut png_bytes: Vec<u8> = Vec::new();
-                    img_buffer
-                        .write_to(
-                            &mut std::io::Cursor::new(&mut png_bytes),
-                            image::ImageFormat::Png,
-                        )
-                        .expect("Failed to encode PNG");
-                    let png_b64 = base64::engine::general_purpose::STANDARD.encode(&png_bytes);
-                    let resp = Response {
+                Ok(image) => match encode_png(image) {
+                    Ok(png_b64) => send_response(&Response {
                         status: "ok".to_string(),
                         png: Some(png_b64),
                         error: None,
-                    };
-                    println!("{}", serde_json::to_string(&resp).unwrap());
-                }
-                Err(e) => {
-                    let resp = Response {
+                    }),
+                    Err(e) => send_response(&Response {
                         status: "error".to_string(),
                         png: None,
-                        error: Some(format!("Render failed: {:?}", e)),
-                    };
-                    println!("{}", serde_json::to_string(&resp).unwrap());
-                }
+                        error: Some(e),
+                    }),
+                },
+                Err(e) => send_response(&Response {
+                    status: "error".to_string(),
+                    png: None,
+                    error: Some(format!("Render failed: {:?}", e)),
+                }),
             },
             Command::ReloadStyle { style } => match renderer.reload_style(&style) {
-                Ok(_) => {
-                    let resp = Response {
-                        status: "ok".to_string(),
-                        png: None,
-                        error: None,
-                    };
-                    println!("{}", serde_json::to_string(&resp).unwrap());
-                }
-                Err(e) => {
-                    let resp = Response {
-                        status: "error".to_string(),
-                        png: None,
-                        error: Some(format!("Reload style failed: {:?}", e)),
-                    };
-                    println!("{}", serde_json::to_string(&resp).unwrap());
-                }
+                Ok(_) => send_response(&Response {
+                    status: "ok".to_string(),
+                    png: None,
+                    error: None,
+                }),
+                Err(e) => send_response(&Response {
+                    status: "error".to_string(),
+                    png: None,
+                    error: Some(format!("Reload style failed: {:?}", e)),
+                }),
             },
             Command::RenderBatch { views } => {
                 let mut pngs = Vec::new();
-                let mut has_error = false;
+                let mut error_response: Option<Response> = None;
+
                 for view in views {
-                    // Update GeoJSON sources if provided
                     if let Some(geojson) = &view.geojson {
                         if let Err(e) = renderer.update_geojson_sources(geojson) {
-                            let resp = Response {
+                            error_response = Some(Response {
                                 status: "error".to_string(),
                                 png: None,
                                 error: Some(format!("GeoJSON update failed: {:?}", e)),
-                            };
-                            println!("{}", serde_json::to_string(&resp).unwrap());
-                            has_error = true;
+                            });
                             break;
                         }
                     }
-                    
+
                     match renderer.render(view.center, view.zoom, view.bearing, view.pitch) {
-                        Ok(image) => {
-                            let img_buffer = image.as_image();
-                            let mut png_bytes: Vec<u8> = Vec::new();
-                            img_buffer
-                                .write_to(
-                                    &mut std::io::Cursor::new(&mut png_bytes),
-                                    image::ImageFormat::Png,
-                                )
-                                .expect("Failed to encode PNG");
-                            pngs.push(base64::engine::general_purpose::STANDARD.encode(&png_bytes));
-                        }
+                        Ok(image) => match encode_png(image) {
+                            Ok(png_b64) => pngs.push(png_b64),
+                            Err(e) => {
+                                error_response = Some(Response {
+                                    status: "error".to_string(),
+                                    png: None,
+                                    error: Some(e),
+                                });
+                                break;
+                            }
+                        },
                         Err(e) => {
-                            let resp = Response {
+                            error_response = Some(Response {
                                 status: "error".to_string(),
                                 png: None,
                                 error: Some(format!("Batch render failed: {:?}", e)),
-                            };
-                            println!("{}", serde_json::to_string(&resp).unwrap());
-                            has_error = true;
+                            });
                             break;
                         }
                     }
                 }
-                if !has_error {
-                    let resp = Response {
+
+                if let Some(resp) = error_response {
+                    send_response(&resp);
+                } else {
+                    send_response(&Response {
                         status: "ok".to_string(),
                         png: Some(pngs.join(",")),
                         error: None,
-                    };
-                    println!("{}", serde_json::to_string(&resp).unwrap());
+                    });
                 }
             }
             Command::Quit => {
+                renderer.cleanup_temp_files();
                 break;
             }
         }
 
-        stdout.flush().unwrap();
+        let _ = stdout.flush();
     }
 }
