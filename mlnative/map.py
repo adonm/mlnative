@@ -210,7 +210,6 @@ class Map:
                    - zoom: float
                    - bearing: float (optional, default 0)
                    - pitch: float (optional, default 0)
-                   - geojson: dict[str, Any] (optional) - GeoJSON sources to update before render
 
         Returns:
             List of PNG image bytes
@@ -219,15 +218,13 @@ class Map:
             views = [
                 {"center": [0, 0], "zoom": 5},
                 {"center": [10, 10], "zoom": 8, "bearing": 45},
-                {
-                    "center": [20, 20],
-                    "zoom": 10,
-                    "geojson": {
-                        "markers": {"type": "FeatureCollection", "features": [...]}
-                    }
-                },
             ]
             pngs = map.render_batch(views)
+
+        Note:
+            Per-view GeoJSON updates are not supported in batch mode. Use
+            set_geojson() + render() in a loop when each view needs different
+            source data.
         """
         if self._closed:
             raise MlnativeError("Map has been closed")
@@ -235,12 +232,11 @@ class Map:
         if self._style is None:
             self._style = DEFAULT_STYLE
 
-        # Check if any view has geojson - requires dict style
-        has_geojson = any(view.get("geojson") for view in views)
-        if has_geojson and isinstance(self._style, str):
+        # Per-view GeoJSON updates are intentionally unsupported in batch mode.
+        if any(view.get("geojson") for view in views):
             raise MlnativeError(
-                "Cannot use geojson in render_batch with URL-loaded style. "
-                "Load the style as a dict first."
+                "render_batch does not support per-view geojson updates. "
+                "Use set_geojson() and render() in a loop instead."
             )
 
         # Validate and normalize views
@@ -273,41 +269,11 @@ class Map:
                 "pitch": pitch,
             }
 
-            # Handle geojson if present
-            if "geojson" in view:
-                geojson = view["geojson"]
-                if isinstance(geojson, dict):
-                    normalized_view["geojson"] = geojson
-                else:
-                    raise MlnativeError(f"View {i}: geojson must be a dict")
-
             normalized_views.append(normalized_view)
 
         try:
-            # Workaround: If any view has geojson, we can't use efficient batch rendering
-            # because maplibre_native doesn't support dynamic source updates.
-            # Fall back to individual renders with set_geojson() calls.
-            if has_geojson:
-                pngs = []
-                for _i, view in enumerate(normalized_views):
-                    # Update geojson sources if present
-                    if "geojson" in view:
-                        for source_id, geojson_data in view["geojson"].items():
-                            self.set_geojson(source_id, geojson_data)
-
-                    # Render this view
-                    png = self.render(
-                        center=view["center"],
-                        zoom=view["zoom"],
-                        bearing=view["bearing"],
-                        pitch=view["pitch"],
-                    )
-                    pngs.append(png)
-                return pngs
-            else:
-                # Use efficient batch rendering for views without geojson
-                daemon = self._get_daemon()
-                return daemon.render_batch(normalized_views)
+            daemon = self._get_daemon()
+            return daemon.render_batch(normalized_views)
         except Exception as e:
             raise MlnativeError(f"Batch render failed: {e}") from e
 

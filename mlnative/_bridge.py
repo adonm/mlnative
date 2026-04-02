@@ -5,9 +5,9 @@ Handles subprocess communication with the native renderer.
 Uses pre-built Rust binaries with statically linked MapLibre Native.
 """
 
-import base64
 import json
 import os
+import queue
 import subprocess
 import sys
 import threading
@@ -18,7 +18,7 @@ from typing import Any
 from .exceptions import MlnativeError
 
 DEFAULT_TIMEOUT = 30.0
-PROTOCOL_VERSION = "1.0"
+PROTOCOL_VERSION = "2.0"
 
 
 def _get_platform_info() -> tuple[str, str]:
@@ -48,6 +48,23 @@ def _get_platform_info() -> tuple[str, str]:
         raise MlnativeError(f"Unsupported architecture: {machine}")
 
     return platform_name, arch
+
+
+def _get_timeout(timeout: float | None = None) -> float:
+    """Return the configured renderer timeout in seconds."""
+    raw_value: str | float = (
+        os.environ.get("MLNATIVE_TIMEOUT", DEFAULT_TIMEOUT) if timeout is None else timeout
+    )
+
+    try:
+        parsed_timeout = float(raw_value)
+    except (TypeError, ValueError) as e:
+        raise MlnativeError("MLNATIVE_TIMEOUT must be a positive number") from e
+
+    if parsed_timeout <= 0:
+        raise MlnativeError("MLNATIVE_TIMEOUT must be a positive number")
+
+    return parsed_timeout
 
 
 def get_binary_path() -> Path:
@@ -85,16 +102,96 @@ def get_binary_path() -> Path:
 class RenderDaemon:
     """Persistent daemon process for batch rendering."""
 
-    def __init__(self) -> None:
-        self._process: subprocess.Popen | None = None
+    def __init__(self, timeout: float | None = None) -> None:
+        self._process: subprocess.Popen[bytes] | None = None
         self._initialized = False
         self._stderr_thread: threading.Thread | None = None
+        self._reader_thread: threading.Thread | None = None
+        self._command_lock = threading.Lock()
+        self._responses: queue.Queue[dict[str, Any]] = queue.Queue()
+        self._timeout = _get_timeout(timeout)
 
     def _drain_stderr(self) -> None:
         """Background thread to drain stderr and prevent deadlock."""
-        if self._process is not None and self._process.stderr is not None:
-            for _line in self._process.stderr:
-                pass  # Discard stderr silently
+        if self._process is None or self._process.stderr is None:
+            return
+
+        for _line in self._process.stderr:
+            pass  # Discard stderr silently
+
+    def _read_exact(self, size: int) -> bytes:
+        """Read an exact number of bytes from stdout."""
+        if self._process is None or self._process.stdout is None:
+            raise EOFError("Renderer process not started")
+
+        remaining = size
+        chunks: list[bytes] = []
+        while remaining > 0:
+            chunk = self._process.stdout.read(remaining)
+            if not chunk:
+                raise EOFError("Renderer process closed unexpectedly")
+            chunks.append(chunk)
+            remaining -= len(chunk)
+
+        return b"".join(chunks)
+
+    def _read_responses(self) -> None:
+        """Background thread to parse daemon responses."""
+        if self._process is None or self._process.stdout is None:
+            return
+
+        try:
+            while True:
+                header_line = self._process.stdout.readline()
+                if not header_line:
+                    self._responses.put(
+                        {
+                            "status": "error",
+                            "error": "Renderer process closed unexpectedly",
+                        }
+                    )
+                    return
+
+                try:
+                    response: dict[str, Any] = json.loads(header_line.decode("utf-8"))
+                except json.JSONDecodeError as e:
+                    self._responses.put(
+                        {
+                            "status": "error",
+                            "error": f"Invalid response from renderer: {e}",
+                        }
+                    )
+                    return
+
+                if "png_len" in response:
+                    png_len = int(response["png_len"])
+                    response["png"] = self._read_exact(png_len)
+                elif "png_lengths" in response:
+                    lengths = [int(length) for length in response.get("png_lengths", [])]
+                    payload = self._read_exact(sum(lengths))
+                    cursor = 0
+                    pngs: list[bytes] = []
+                    for length in lengths:
+                        next_cursor = cursor + length
+                        pngs.append(payload[cursor:next_cursor])
+                        cursor = next_cursor
+                    response["pngs"] = pngs
+
+                self._responses.put(response)
+        except EOFError:
+            self._responses.put(
+                {
+                    "status": "error",
+                    "error": "Renderer process closed unexpectedly",
+                }
+            )
+        except Exception as e:
+            self._responses.put(
+                {
+                    "status": "error",
+                    "error": f"Renderer reader failed: {e}",
+                }
+            )
 
     def start(self, width: int, height: int, style: str, pixel_ratio: float = 1.0) -> None:
         """Start the daemon and initialize the renderer."""
@@ -109,16 +206,15 @@ class RenderDaemon:
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True,
-                bufsize=1,
+                text=False,
             )
-            # Start background thread to drain stderr and prevent deadlock
             self._stderr_thread = threading.Thread(target=self._drain_stderr, daemon=True)
             self._stderr_thread.start()
+            self._reader_thread = threading.Thread(target=self._read_responses, daemon=True)
+            self._reader_thread.start()
         except OSError as e:
             raise MlnativeError(f"Failed to start renderer: {e}") from e
 
-        # Initialize
         init_cmd = {
             "cmd": "init",
             "width": width,
@@ -132,7 +228,7 @@ class RenderDaemon:
         if response.get("status") != "ok":
             self.stop()
             error_msg = response.get("error", "Unknown error")
-            if "protocol version" in error_msg.lower():
+            if "protocol version" in str(error_msg).lower():
                 error_msg = (
                     f"{error_msg}\n"
                     f"Client protocol: {PROTOCOL_VERSION}\n"
@@ -144,7 +240,7 @@ class RenderDaemon:
         self._initialized = True
 
     def _send_command(
-        self, cmd: dict[str, Any], timeout: float = DEFAULT_TIMEOUT
+        self, cmd: dict[str, Any], timeout: float | None = None
     ) -> dict[str, Any]:
         """Send a command to the daemon and get response.
 
@@ -155,40 +251,25 @@ class RenderDaemon:
         Raises:
             MlnativeError: If daemon not started, timeout, or invalid response
         """
-        if self._process is None or self._process.stdin is None or self._process.stdout is None:
+        if self._process is None or self._process.stdin is None:
             raise MlnativeError("Daemon not started")
 
-        # Send command (write is typically fast, no timeout needed)
-        cmd_json = json.dumps(cmd) + "\n"
-        try:
-            self._process.stdin.write(cmd_json)
-            self._process.stdin.flush()
-        except BrokenPipeError:
-            raise MlnativeError("Renderer process closed unexpectedly") from None
+        wait_timeout = self._timeout if timeout is None else _get_timeout(timeout)
+        cmd_json = (json.dumps(cmd) + "\n").encode("utf-8")
 
-        # Read response with timeout using a thread
-        response_line: str = ""
+        with self._command_lock:
+            try:
+                self._process.stdin.write(cmd_json)
+                self._process.stdin.flush()
+            except BrokenPipeError:
+                raise MlnativeError("Renderer process closed unexpectedly") from None
 
-        def read_line() -> None:
-            nonlocal response_line
-            assert self._process is not None and self._process.stdout is not None
-            with suppress(Exception):
-                response_line = self._process.stdout.readline()
-
-        read_thread = threading.Thread(target=read_line, daemon=True)
-        read_thread.start()
-        read_thread.join(timeout=timeout)
-        if read_thread.is_alive():
-            raise MlnativeError(f"Timeout waiting for renderer response after {timeout}s")
-
-        if not response_line:
-            raise MlnativeError("Renderer process closed unexpectedly")
-
-        try:
-            result: dict[str, Any] = json.loads(response_line)
-            return result
-        except json.JSONDecodeError as e:
-            raise MlnativeError(f"Invalid response from renderer: {e}") from e
+            try:
+                return self._responses.get(timeout=wait_timeout)
+            except queue.Empty as e:
+                raise MlnativeError(
+                    f"Timeout waiting for renderer response after {wait_timeout}s"
+                ) from e
 
     def render(
         self, center: list[float], zoom: float, bearing: float = 0, pitch: float = 0
@@ -210,11 +291,11 @@ class RenderDaemon:
         if response.get("status") != "ok":
             raise MlnativeError(f"Render failed: {response.get('error')}")
 
-        png_b64 = response.get("png")
-        if not png_b64:
+        png = response.get("png")
+        if not isinstance(png, bytes) or not png:
             raise MlnativeError("Render returned no image data")
 
-        return base64.b64decode(png_b64)
+        return png
 
     def render_batch(self, views: list[dict[str, Any]]) -> list[bytes]:
         """Render multiple views efficiently."""
@@ -231,8 +312,11 @@ class RenderDaemon:
         if response.get("status") != "ok":
             raise MlnativeError(f"Batch render failed: {response.get('error')}")
 
-        pngs_b64 = response.get("png", "").split(",")
-        return [base64.b64decode(png) for png in pngs_b64 if png]
+        pngs = response.get("pngs")
+        if not isinstance(pngs, list):
+            raise MlnativeError("Batch render returned no image data")
+
+        return pngs
 
     def reload_style(self, style: str) -> None:
         """Reload the style without restarting the daemon.
@@ -259,8 +343,12 @@ class RenderDaemon:
     def stop(self) -> None:
         """Stop the daemon."""
         if self._process is not None and self._process.poll() is None:
+            with suppress(Exception):
+                if self._process.stdin is not None:
+                    self._process.stdin.write(b'{"cmd":"quit"}\n')
+                    self._process.stdin.flush()
+
             try:
-                self._send_command({"cmd": "quit"})
                 self._process.wait(timeout=5)
             except Exception:
                 self._process.terminate()
@@ -271,6 +359,13 @@ class RenderDaemon:
 
         self._process = None
         self._initialized = False
+        self._stderr_thread = None
+        self._reader_thread = None
+        while True:
+            try:
+                self._responses.get_nowait()
+            except queue.Empty:
+                break
 
     def __enter__(self) -> "RenderDaemon":
         return self

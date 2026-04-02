@@ -1,59 +1,35 @@
-# Dockerfile for running mlnative tests with proper library versions
-# Provides libjpeg8 and libicu74 needed by maplibre-gl-native
-# Uses Node.js because maplibre-gl-native is a V8 native addon
+# Dockerfile for running mlnative tests against the Rust renderer stack
 FROM ubuntu:24.04
 
-# Install minimal dependencies + xvfb for headless rendering
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
+    build-essential \
     ca-certificates \
-    libjpeg8 \
-    libicu74 \
-    libgl1 \
-    libglx0 \
-    libopengl0 \
+    curl \
     libcurl4 \
+    libcurl4-openssl-dev \
+    libglfw3 \
     libuv1 \
-    libx11-6 \
-    libxext6 \
-    libwebp7 \
-    libpng16-16t64 \
+    mesa-vulkan-drivers \
+    pkg-config \
     python3.12 \
     python3.12-venv \
-    unzip \
-    xvfb \
+    zlib1g \
     && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
 WORKDIR /app
 
-# Install mise and tools (includes node for native module compatibility)
 RUN curl https://mise.run | sh
 ENV PATH="/root/.local/bin:$PATH"
 
-# Create mise config with Node 22 (ABI 127 has prebuilt maplibre binaries)
-RUN echo '[tools]\nuv = "latest"\njust = "latest"\nnode = "22"' > /app/mise.toml
-RUN mise trust && mise install
-
-# Copy project files
-COPY pyproject.toml Justfile README.md ./
+COPY .mise.toml pyproject.toml Justfile README.md ./
 COPY mlnative/ ./mlnative/
+COPY rust/ ./rust/
 COPY examples/ ./examples/
 COPY tests/ ./tests/
 COPY scripts/ ./scripts/
 
-# Setup Python environment  
+RUN mise trust --yes && mise install
 RUN mise exec -- uv venv && mise exec -- uv pip install -e ".[dev,web]"
+RUN mise exec -- just build-rust && mise exec -- just ci-build-binary linux-x64
 
-# Install native module using npm with explicit postinstall
-RUN PLATFORM=$(uname -m | sed 's/x86_64/x64/' | sed 's/aarch64/arm64/') && \
-    VENDOR_DIR="mlnative/_vendor/linux-${PLATFORM}" && \
-    rm -rf "${VENDOR_DIR}/node_modules" "${VENDOR_DIR}/package-lock.json" && \
-    mkdir -p "${VENDOR_DIR}" && \
-    cd "${VENDOR_DIR}" && \
-    echo '{"dependencies": {"@maplibre/maplibre-gl-native": "^6.3.0"}}' > package.json && \
-    mise exec -- npm cache clean --force && \
-    mise exec -- npm install --prefer-online
-
-# Run tests with Xvfb virtual display
-CMD ["sh", "-c", "Xvfb :99 -screen 0 1024x768x24 & export DISPLAY=:99 && sleep 1 && mise exec -- just test"]
+CMD ["sh", "-c", "mise exec -- just test"]

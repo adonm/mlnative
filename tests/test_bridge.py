@@ -2,7 +2,7 @@
 
 import pytest
 
-from mlnative._bridge import _get_platform_info, get_binary_path
+from mlnative._bridge import _get_platform_info, _get_timeout, get_binary_path
 from mlnative.exceptions import MlnativeError
 
 
@@ -91,3 +91,28 @@ class TestRenderDaemonValidation:
             raise
         finally:
             daemon.stop()
+
+
+class TestTimeoutConfiguration:
+    """Tests for daemon timeout configuration."""
+
+    def test_default_timeout(self, monkeypatch):
+        """Test default timeout when env var is unset."""
+        monkeypatch.delenv("MLNATIVE_TIMEOUT", raising=False)
+        assert _get_timeout() == pytest.approx(30.0)
+
+    def test_env_timeout(self, monkeypatch):
+        """Test timeout can be configured via environment."""
+        monkeypatch.setenv("MLNATIVE_TIMEOUT", "12.5")
+        assert _get_timeout() == pytest.approx(12.5)
+
+    def test_invalid_env_timeout(self, monkeypatch):
+        """Test invalid timeout values are rejected."""
+        monkeypatch.setenv("MLNATIVE_TIMEOUT", "nope")
+        with pytest.raises(MlnativeError, match="MLNATIVE_TIMEOUT"):
+            _get_timeout()
+
+    def test_non_positive_timeout(self):
+        """Test timeout must be positive."""
+        with pytest.raises(MlnativeError, match="MLNATIVE_TIMEOUT"):
+            _get_timeout(0)

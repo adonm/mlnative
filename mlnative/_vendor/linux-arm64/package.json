@@ -1,7 +1,0 @@
-{
-  "name": "mlnative-vendor",
-  "version": "0.1.0",
-  "dependencies": {
-    "@maplibre/maplibre-gl-native": "^6.3.0"
-  }
-}

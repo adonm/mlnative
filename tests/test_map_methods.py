@@ -175,3 +175,23 @@ class TestSetGeojson:
         style = m._style
         assert isinstance(style, dict)
         assert "markers" in style.get("sources", {})
+
+
+class TestRenderBatchValidation:
+    """Tests for render_batch() validation."""
+
+    def test_render_batch_rejects_per_view_geojson(self):
+        """Per-view GeoJSON in batch mode should fail fast."""
+        m = Map(width=512, height=512)
+        m.load_style({"version": 8, "sources": {}, "layers": []})
+
+        with pytest.raises(MlnativeError, match="does not support per-view geojson"):
+            m.render_batch(
+                [
+                    {
+                        "center": [0, 0],
+                        "zoom": 1,
+                        "geojson": {"markers": {"type": "FeatureCollection", "features": []}},
+                    }
+                ]
+            )

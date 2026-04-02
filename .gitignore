@@ -50,10 +50,6 @@ Thumbs.db
 *.jpg
 *.jpeg
 
-# Vendor binaries (these should be built separately)
-mlnative/_vendor/*/node_modules/
-mlnative/_vendor/*/build/
-*.node
 
 # Temporary files
 *.tmp
@@ -70,4 +66,3 @@ mlnative/bin/*
 # Allow docs images to be committed
 !docs/images/*.png
 test-output/
-vendor/

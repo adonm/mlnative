@@ -126,9 +126,10 @@ render_batch(views: list[dict[str, Any]]) -> list[bytes]
 | `zoom` | `float` | yes | Zoom level |
 | `bearing` | `float` | no | Rotation (default 0) |
 | `pitch` | `float` | no | Tilt (default 0) |
-| `geojson` | `dict` | no | GeoJSON sources to update |
 
 **Returns:** `list[bytes]` - List of PNG images
+
+**Note:** Per-view GeoJSON updates are not supported in batch mode. Use `set_geojson()` followed by `render()` in a loop when each image needs different source data.
 
 **Example:**
 

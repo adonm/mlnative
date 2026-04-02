@@ -33,7 +33,7 @@ test-filter PATTERN:
 
 # Run only unit tests (skip integration)
 test-unit:
-    uv run python -m pytest tests/ -v -k "Validation" --tb=short
+    uv run python -m pytest tests/ -v -m "not integration" --tb=short
 
 # Run linting
 lint:

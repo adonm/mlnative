@@ -191,8 +191,11 @@ Render multiple views efficiently.
 ```python
 views = [
     {"center": [lon, lat], "zoom": z},
-    {"center": [lon, lat], "zoom": z, "geojson": {"markers": {...}}},
+    {"center": [lon, lat], "zoom": z, "bearing": 45},
 ]
+
+# Per-view GeoJSON updates are not supported here. Use set_geojson()
+# and render() in a loop when each image needs different source data.
 ```
 
 ### fit_bounds(bounds, padding=0, max_zoom=24)
