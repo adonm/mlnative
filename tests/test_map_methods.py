@@ -12,6 +12,13 @@ from mlnative.exceptions import MlnativeError
 class TestFitBounds:
     """Tests for fit_bounds() method."""
 
+    def test_fit_bounds_rejects_web_mercator_pole(self):
+        """Web Mercator cannot represent the poles."""
+        m = Map(width=512, height=512)
+        with pytest.raises(MlnativeError, match="Web Mercator"):
+            m.fit_bounds((-10, -90, 10, 10))
+
+
     def test_fit_bounds_basic(self):
         """Test basic bounds fitting."""
         m = Map(width=512, height=512)
@@ -179,6 +186,21 @@ class TestSetGeojson:
 
 class TestRenderBatchValidation:
     """Tests for render_batch() validation."""
+
+    def test_render_batch_rejects_too_many_views(self):
+        """Large batches should fail before talking to the daemon."""
+        m = Map(width=64, height=64)
+        views = [{"center": [0, 0], "zoom": 1}] * 129
+        with pytest.raises(MlnativeError, match="at most"):
+            m.render_batch(views)
+
+    def test_render_batch_rejects_excessive_output_size(self):
+        """Large in-memory batches should be capped."""
+        m = Map(width=4096, height=4096)
+        views = [{"center": [0, 0], "zoom": 1}] * 4
+        with pytest.raises(MlnativeError, match="too large"):
+            m.render_batch(views)
+
 
     def test_render_batch_rejects_per_view_geojson(self):
         """Per-view GeoJSON in batch mode should fail fast."""

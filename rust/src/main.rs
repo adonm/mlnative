@@ -63,21 +63,21 @@ struct Response {
 
 struct Renderer {
     renderer: Option<ImageRenderer<Static>>,
-    temp_files: Vec<NamedTempFile>,
+    temp_style_file: Option<NamedTempFile>,
 }
 
 impl Renderer {
     fn new() -> Self {
         Self {
             renderer: None,
-            temp_files: Vec::new(),
+            temp_style_file: None,
         }
     }
 
     fn load_style(
         renderer: &mut ImageRenderer<Static>,
         style: &str,
-        temp_files: &mut Vec<NamedTempFile>,
+        temp_style_file: &mut Option<NamedTempFile>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         if style.starts_with("http://")
             || style.starts_with("https://")
@@ -87,11 +87,16 @@ impl Renderer {
             renderer.load_style_from_url(&url);
             Ok(())
         } else if style.starts_with("{") {
-            let mut temp_file = NamedTempFile::new()?;
-            temp_file.write_all(style.as_bytes())?;
-            temp_file.flush()?;
+            if temp_style_file.is_none() {
+                *temp_style_file = Some(NamedTempFile::new()?);
+            }
+            let temp_file = temp_style_file
+                .as_mut()
+                .ok_or("temporary style file unavailable")?;
+            temp_file.as_file_mut().set_len(0)?;
+            temp_file.as_file_mut().write_all(style.as_bytes())?;
+            temp_file.as_file_mut().flush()?;
             renderer.load_style_from_path(temp_file.path())?;
-            temp_files.push(temp_file);
             Ok(())
         } else {
             renderer.load_style_from_path(style)?;
@@ -114,7 +119,7 @@ impl Renderer {
             .with_pixel_ratio(pixel_ratio as f32);
 
         let mut renderer = builder.build_static_renderer();
-        Self::load_style(&mut renderer, style, &mut self.temp_files)?;
+        Self::load_style(&mut renderer, style, &mut self.temp_style_file)?;
 
         self.renderer = Some(renderer);
         Ok(())
@@ -143,7 +148,7 @@ impl Renderer {
             .as_mut()
             .ok_or("Renderer not initialized")?;
 
-        Self::load_style(renderer, style, &mut self.temp_files)
+        Self::load_style(renderer, style, &mut self.temp_style_file)
     }
 }
 
@@ -173,6 +178,15 @@ fn send_response_with_payload(resp: &Response, payload: &[u8]) {
     send_response(resp);
     let _ = io::stdout().write_all(payload);
     let _ = io::stdout().flush();
+}
+
+fn send_response_with_chunks<'a>(resp: &Response, chunks: impl IntoIterator<Item = &'a [u8]>) {
+    send_response(resp);
+    let mut stdout = io::stdout();
+    for chunk in chunks {
+        let _ = stdout.write_all(chunk);
+    }
+    let _ = stdout.flush();
 }
 
 fn main() {
@@ -231,11 +245,11 @@ fn main() {
                         png_lengths: None,
                         error: None,
                     }),
-                    Err(e) => send_response(&Response {
+                    Err(_) => send_response(&Response {
                         status: "error".to_string(),
                         png_len: None,
                         png_lengths: None,
-                        error: Some(format!("Init failed: {:?}", e)),
+                        error: Some("Init failed".to_string()),
                     }),
                 }
             }
@@ -266,7 +280,7 @@ fn main() {
                     status: "error".to_string(),
                     png_len: None,
                     png_lengths: None,
-                    error: Some(format!("Render failed: {:?}", e)),
+                    error: Some("Render failed".to_string()),
                 }),
             },
             Command::ReloadStyle { style } => match renderer.reload_style(&style) {
@@ -276,15 +290,15 @@ fn main() {
                     png_lengths: None,
                     error: None,
                 }),
-                Err(e) => send_response(&Response {
+                Err(_) => send_response(&Response {
                     status: "error".to_string(),
                     png_len: None,
                     png_lengths: None,
-                    error: Some(format!("Reload style failed: {:?}", e)),
+                    error: Some("Reload style failed".to_string()),
                 }),
             },
             Command::RenderBatch { views } => {
-                let mut payload = Vec::new();
+                let mut png_batches = Vec::with_capacity(views.len());
                 let mut png_lengths = Vec::with_capacity(views.len());
                 let mut error_response: Option<Response> = None;
 
@@ -293,24 +307,24 @@ fn main() {
                         Ok(image) => match encode_png(image) {
                             Ok(png_bytes) => {
                                 png_lengths.push(png_bytes.len());
-                                payload.extend_from_slice(&png_bytes);
+                                png_batches.push(png_bytes);
                             }
-                            Err(e) => {
+                            Err(_) => {
                                 error_response = Some(Response {
                                     status: "error".to_string(),
                                     png_len: None,
                                     png_lengths: None,
-                                    error: Some(e),
+                                    error: Some("PNG encoding failed".to_string()),
                                 });
                                 break;
                             }
                         },
-                        Err(e) => {
+                        Err(_) => {
                             error_response = Some(Response {
                                 status: "error".to_string(),
                                 png_len: None,
                                 png_lengths: None,
-                                error: Some(format!("Batch render failed: {:?}", e)),
+                                error: Some("Batch render failed".to_string()),
                             });
                             break;
                         }
@@ -320,14 +334,14 @@ fn main() {
                 if let Some(resp) = error_response {
                     send_response(&resp);
                 } else {
-                    send_response_with_payload(
+                    send_response_with_chunks(
                         &Response {
                             status: "ok".to_string(),
                             png_len: None,
                             png_lengths: Some(png_lengths),
                             error: None,
                         },
-                        &payload,
+                        png_batches.iter().map(Vec::as_slice),
                     );
                 }
             }

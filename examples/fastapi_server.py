@@ -11,11 +11,15 @@ Query parameters:
 - style: Style URL (default: OpenFreeMap Liberty)
 """
 
+import logging
+
 import uvicorn
 from fastapi import FastAPI, Query, Response
 from fastapi.responses import JSONResponse
 
-from mlnative import Map
+from mlnative import Map, MlnativeError
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="mlnative Static Maps API")
 
@@ -79,8 +83,15 @@ def static_map(
             headers={"Content-Disposition": f"inline; filename=map_{lon}_{lat}_{zoom}.png"},
         )
 
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"error": f"Render failed: {str(e)}"})
+    except MlnativeError:
+        logger.exception(
+            "static map render failed",
+            extra={"lon": lon, "lat": lat, "zoom": zoom, "width": width, "height": height},
+        )
+        return JSONResponse(status_code=500, content={"error": "Render failed"})
+    except Exception:
+        logger.exception("unexpected static map server error")
+        return JSONResponse(status_code=500, content={"error": "Internal server error"})
 
 
 @app.get("/health")
@@ -98,4 +109,4 @@ if __name__ == "__main__":
     print("\nAPI docs: http://localhost:8000/docs")
     print("\nPress Ctrl+C to stop")
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8000)

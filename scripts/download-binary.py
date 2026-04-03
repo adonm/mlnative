@@ -1,15 +1,12 @@
 #!/usr/bin/env python3
 """
-Download native binaries for mlnative.
+Native binary helper for mlnative.
 
-This script downloads the appropriate native renderer binary for the current platform.
+This helper now fails closed instead of downloading unverified executables.
 """
 
-import os
 import platform
 import sys
-import urllib.request
-from pathlib import Path
 
 
 def get_platform():
@@ -37,41 +34,23 @@ def get_platform():
 
 
 def download_binary(version="latest"):
-    """Download the native binary for current platform."""
+    """Refuse unverified binary downloads."""
     platform_id = get_platform()
     binary_name = f"mlnative-render-{platform_id}"
-    
+
     if sys.platform == "win32":
         binary_name += ".exe"
-    
-    # Determine destination
-    pkg_dir = Path(__file__).parent.parent / "mlnative" / "bin"
-    pkg_dir.mkdir(parents=True, exist_ok=True)
-    
-    dest_path = pkg_dir / binary_name
-    
-    if dest_path.exists():
-        print(f"Binary already exists: {dest_path}")
-        return dest_path
-    
-    # Construct download URL
+
     base_url = "https://github.com/adonm/mlnative/releases/download"
     if version == "latest":
         url = f"{base_url}/latest/{binary_name}"
     else:
         url = f"{base_url}/{version}/{binary_name}"
-    
-    print(f"Downloading {binary_name}...")
-    print(f"URL: {url}")
-    
-    try:
-        urllib.request.urlretrieve(url, dest_path)
-        os.chmod(dest_path, 0o755)
-        print(f"Downloaded to: {dest_path}")
-        return dest_path
-    except Exception as e:
-        print(f"Failed to download: {e}")
-        raise
+
+    raise RuntimeError(
+        "Refusing to download and execute an unverified binary artifact. "
+        f"Fetch {url} through a verified release process or install mlnative from a trusted package."
+    )
 
 
 if __name__ == "__main__":

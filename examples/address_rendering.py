@@ -4,7 +4,10 @@ This example shows how to use geopy with mlnative to easily render
 maps from addresses without manually looking up coordinates.
 """
 
-from geopy.geocoders import ArcGIS
+try:
+    from geopy.geocoders import ArcGIS
+except ImportError as e:
+    raise SystemExit("Install the optional geo extra to run this example: pip install 'mlnative[geo]'") from e
 
 from mlnative import Map
 

@@ -25,10 +25,12 @@ classifiers = [
 ]
 dependencies = [
     "shapely>=2.0",
-    "geopy>=2.4",
 ]
 
 [project.optional-dependencies]
+geo = [
+    "geopy>=2.4",
+]
 web = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",

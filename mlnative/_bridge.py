@@ -6,11 +6,13 @@ Uses pre-built Rust binaries with statically linked MapLibre Native.
 """
 
 import json
+import logging
 import os
 import queue
 import subprocess
 import sys
 import threading
+from collections import deque
 from contextlib import suppress
 from pathlib import Path
 from typing import Any
@@ -19,6 +21,11 @@ from .exceptions import MlnativeError
 
 DEFAULT_TIMEOUT = 30.0
 PROTOCOL_VERSION = "2.0"
+STDERR_BUFFER_LINES = 50
+MAX_BATCH_VIEWS = 128
+PATH_BINARY_OPT_IN_ENV = "MLNATIVE_USE_SYSTEM_BINARY"
+
+logger = logging.getLogger(__name__)
 
 
 def _get_platform_info() -> tuple[str, str]:
@@ -67,6 +74,11 @@ def _get_timeout(timeout: float | None = None) -> float:
     return parsed_timeout
 
 
+def _env_flag_enabled(name: str) -> bool:
+    """Return true when an environment flag is explicitly enabled."""
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def get_binary_path() -> Path:
     """Get the path to the native renderer binary."""
     platform_name, arch = _get_platform_info()
@@ -85,16 +97,17 @@ def get_binary_path() -> Path:
             os.chmod(binary_path, 0o755)
         return binary_path
 
-    # Check in PATH
-    for path_dir in os.environ.get("PATH", "").split(os.pathsep):
-        path = Path(path_dir) / binary_name
-        if path.exists():
-            return path
+    # Check PATH only when explicitly enabled.
+    if _env_flag_enabled(PATH_BINARY_OPT_IN_ENV):
+        for path_dir in os.environ.get("PATH", "").split(os.pathsep):
+            path = Path(path_dir) / binary_name
+            if path.exists():
+                return path
 
     raise MlnativeError(
         f"Native renderer binary not found: {binary_name}\n"
         f"Searched in: {pkg_dir / 'bin'}\n"
-        f"Ensure the binary is included in the package or available in PATH.\n"
+        f"PATH lookup is disabled by default. Set {PATH_BINARY_OPT_IN_ENV}=1 to opt in.\n"
         f"For source builds, run: just build-rust"
     )
 
@@ -102,8 +115,26 @@ def get_binary_path() -> Path:
 class RenderDaemon:
     """Persistent daemon process for batch rendering."""
 
+    def _format_renderer_error(self, error: Any) -> str:
+        """Format a renderer error for callers without leaking stderr details."""
+        return str(error)
+
+    def _log_renderer_error(self, message: str, error: Any) -> None:
+        """Log renderer failures with recent stderr for debugging."""
+        if self._stderr_lines:
+            logger.error(
+                "%s: %s | recent_stderr=%s",
+                message,
+                error,
+                list(self._stderr_lines),
+            )
+        else:
+            logger.error("%s: %s", message, error)
+
+
     def __init__(self, timeout: float | None = None) -> None:
         self._process: subprocess.Popen[bytes] | None = None
+        self._stderr_lines: deque[str] = deque(maxlen=STDERR_BUFFER_LINES)
         self._initialized = False
         self._stderr_thread: threading.Thread | None = None
         self._reader_thread: threading.Thread | None = None
@@ -112,12 +143,14 @@ class RenderDaemon:
         self._timeout = _get_timeout(timeout)
 
     def _drain_stderr(self) -> None:
-        """Background thread to drain stderr and prevent deadlock."""
+        """Background thread to drain stderr, retain recent lines, and log them."""
         if self._process is None or self._process.stderr is None:
             return
 
-        for _line in self._process.stderr:
-            pass  # Discard stderr silently
+        for raw_line in self._process.stderr:
+            line = raw_line.decode("utf-8", errors="replace").rstrip()
+            self._stderr_lines.append(line)
+            logger.debug("renderer.stderr: %s", line)
 
     def _read_exact(self, size: int) -> bytes:
         """Read an exact number of bytes from stdout."""
@@ -198,6 +231,7 @@ class RenderDaemon:
         if self._process is not None:
             raise MlnativeError("Daemon already started")
 
+        self._stderr_lines.clear()
         binary_path = get_binary_path()
 
         try:
@@ -226,8 +260,9 @@ class RenderDaemon:
 
         response = self._send_command(init_cmd)
         if response.get("status") != "ok":
+            self._log_renderer_error("renderer init failed", response.get("error", "Unknown error"))
             self.stop()
-            error_msg = response.get("error", "Unknown error")
+            error_msg = self._format_renderer_error(response.get("error", "Unknown error"))
             if "protocol version" in str(error_msg).lower():
                 error_msg = (
                     f"{error_msg}\n"
@@ -289,7 +324,10 @@ class RenderDaemon:
         response = self._send_command(cmd)
 
         if response.get("status") != "ok":
-            raise MlnativeError(f"Render failed: {response.get('error')}")
+            self._log_renderer_error("renderer render failed", response.get("error"))
+            raise MlnativeError(
+                f"Render failed: {self._format_renderer_error(response.get('error'))}"
+            )
 
         png = response.get("png")
         if not isinstance(png, bytes) or not png:
@@ -301,6 +339,10 @@ class RenderDaemon:
         """Render multiple views efficiently."""
         if not self._initialized:
             raise MlnativeError("Renderer not initialized")
+        if len(views) > MAX_BATCH_VIEWS:
+            raise MlnativeError(
+                f"Batch render supports at most {MAX_BATCH_VIEWS} views, got {len(views)}"
+            )
 
         cmd = {
             "cmd": "render_batch",
@@ -310,7 +352,10 @@ class RenderDaemon:
         response = self._send_command(cmd)
 
         if response.get("status") != "ok":
-            raise MlnativeError(f"Batch render failed: {response.get('error')}")
+            self._log_renderer_error("renderer batch failed", response.get("error"))
+            raise MlnativeError(
+                f"Batch render failed: {self._format_renderer_error(response.get('error'))}"
+            )
 
         pngs = response.get("pngs")
         if not isinstance(pngs, list):
@@ -338,7 +383,10 @@ class RenderDaemon:
         response = self._send_command(cmd)
 
         if response.get("status") != "ok":
-            raise MlnativeError(f"Style reload failed: {response.get('error')}")
+            self._log_renderer_error("renderer style reload failed", response.get("error"))
+            raise MlnativeError(
+                f"Style reload failed: {self._format_renderer_error(response.get('error'))}"
+            )
 
     def stop(self) -> None:
         """Stop the daemon."""
@@ -359,6 +407,7 @@ class RenderDaemon:
 
         self._process = None
         self._initialized = False
+        self._stderr_lines.clear()
         self._stderr_thread = None
         self._reader_thread = None
         while True:

@@ -39,7 +39,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
-          toolchain: 1.90.0
+          toolchain: 1.94.1
           components: clippy
 
       - name: Run clippy
@@ -88,7 +88,7 @@ jobs:
         run: just ci-setup
 
       - name: Scan locked Python environment
-        run: uv run pip-audit
+        run: uv run --frozen --with pip-audit pip-audit
 
   build-binary:
     name: Build binary ${{ matrix.platform }}

@@ -4,7 +4,10 @@
 Run this script to regenerate screenshots after style changes or updates.
 """
 
-from geopy.geocoders import ArcGIS
+try:
+    from geopy.geocoders import ArcGIS
+except ImportError as e:
+    raise SystemExit("Install the optional geo extra to run this example: pip install 'mlnative[geo]'") from e
 
 from mlnative import Map
 

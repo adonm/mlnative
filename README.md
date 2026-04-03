@@ -18,19 +18,16 @@ pip install mlnative
 
 ```python
 from mlnative import Map
-from geopy.geocoders import ArcGIS
 
-# Geocode an address
-geolocator = ArcGIS()
-location = geolocator.geocode("San Francisco")
-
-# Render map at that location
 with Map(512, 512) as m:
-    png = m.render(
-        center=[location.longitude, location.latitude],
-        zoom=12
-    )
+    png = m.render(center=[-122.4194, 37.7749], zoom=12)
     open("map.png", "wb").write(png)
+```
+
+For geocoding examples, install the optional extra:
+
+```bash
+pip install 'mlnative[geo]'
 ```
 
 ## Features
@@ -38,7 +35,7 @@ with Map(512, 512) as m:
 - **Zero config** - Works out of the box with OpenFreeMap tiles
 - **HiDPI support** - `pixel_ratio=2` for sharp retina displays
 - **Batch rendering** - Efficiently render hundreds of maps
-- **Address geocoding** - Built-in support via geopy
+- **Optional geocoding extra** - Use `mlnative[geo]` for address lookup examples
 - **Custom markers** - Add GeoJSON points, lines, polygons
 
 ## Screenshots
@@ -68,11 +65,11 @@ Both images show the exact same geographic area. The 2x version has 4x more pixe
 
 ## Examples
 
-### Render from address
+### Render from address (optional `geo` extra)
 
 ```python
-from mlnative import Map
 from geopy.geocoders import ArcGIS
+from mlnative import Map
 
 geolocator = ArcGIS()
 location = geolocator.geocode("Sydney Opera House")
@@ -83,6 +80,9 @@ with Map(512, 512) as m:
         zoom=15
     )
 ```
+
+Install first with `pip install 'mlnative[geo]'`.
+
 
 ### Fit bounds to show area
 
@@ -109,7 +109,7 @@ with Map(800, 600) as m:
     png = m.render(center=center, zoom=zoom)
 ```
 
-### Batch render multiple cities
+### Batch render multiple cities (optional `geo` extra)
 
 ```python
 from geopy.geocoders import ArcGIS
@@ -136,24 +136,15 @@ with Map(512, 512) as m:
 Use `pixel_ratio` to render high-resolution images for crisp display on retina/HiDPI screens.
 
 ```python
-from geopy.geocoders import ArcGIS
-
-geolocator = ArcGIS()
-location = geolocator.geocode("Paris")
+center = [2.3522, 48.8566]  # Paris
 
 # Standard display (1x) - 512x512 image
 with Map(512, 512, pixel_ratio=1) as m:
-    png = m.render(
-        center=[location.longitude, location.latitude],
-        zoom=13
-    )
+    png = m.render(center=center, zoom=13)
 
 # Retina/HiDPI display (2x) - 1024x1024 image
 with Map(512, 512, pixel_ratio=2) as m:
-    png = m.render(
-        center=[location.longitude, location.latitude],
-        zoom=13
-    )
+    png = m.render(center=center, zoom=13)
     # Same geographic area, but text appears sharper
 ```
 
@@ -196,11 +187,12 @@ views = [
 
 # Per-view GeoJSON updates are not supported here. Use set_geojson()
 # and render() in a loop when each image needs different source data.
+# Large batches are capped to keep memory use predictable.
 ```
 
 ### fit_bounds(bounds, padding=0, max_zoom=24)
 
-Calculate center/zoom to fit bounding box.
+Calculate center/zoom to fit bounding box. Bounds must stay within Web Mercator latitude limits (about ±85.0511°).
 
 ```python
 center, zoom = m.fit_bounds((xmin, ymin, xmax, ymax))
@@ -210,6 +202,7 @@ png = m.render(center=center, zoom=zoom)
 ### set_geojson(source_id, geojson)
 
 Update GeoJSON source in style (requires dict style, not URL).
+Each update reloads the full style in the current backend, so keep source payloads modest.
 
 ```python
 m.set_geojson("markers", {"type": "FeatureCollection", "features": [...]})

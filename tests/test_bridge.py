@@ -2,7 +2,12 @@
 
 import pytest
 
-from mlnative._bridge import _get_platform_info, _get_timeout, get_binary_path
+from mlnative._bridge import (
+    PATH_BINARY_OPT_IN_ENV,
+    _get_platform_info,
+    _get_timeout,
+    get_binary_path,
+)
 from mlnative.exceptions import MlnativeError
 
 
@@ -28,6 +33,29 @@ class TestGetPlatformInfo:
 
 class TestGetBinaryPath:
     """Tests for get_binary_path()."""
+
+    def test_path_lookup_requires_opt_in(self, monkeypatch, tmp_path):
+        """PATH fallback should stay disabled unless explicitly enabled."""
+        platform, arch = _get_platform_info()
+        binary_name = f"mlnative-render-{platform}-{arch}"
+        if platform == "win32":
+            binary_name += ".exe"
+
+        fake_dir = tmp_path / "bin"
+        fake_dir.mkdir()
+        fake_binary = fake_dir / binary_name
+        fake_binary.write_bytes(b"#!/bin/sh\n")
+
+        monkeypatch.setenv("PATH", str(fake_dir))
+        monkeypatch.setenv(PATH_BINARY_OPT_IN_ENV, "0")
+
+        try:
+            path = get_binary_path()
+            if path == fake_binary:
+                pytest.fail("PATH fallback should require explicit opt-in")
+        except MlnativeError as e:
+            assert PATH_BINARY_OPT_IN_ENV in str(e)
+
 
     def test_binary_name_format(self):
         """Test that binary name follows expected format."""

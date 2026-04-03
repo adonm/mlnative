@@ -6,12 +6,16 @@ Provides a simple form to build API calls and see the generated Python code,
 plus generate actual map images with various options including 2x/highdpi.
 """
 
+import logging
+
 import uvicorn
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 
-from mlnative import Map
+from mlnative import Map, MlnativeError
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="mlnative Test Interface")
 templates = Jinja2Templates(directory="examples/templates")
@@ -129,14 +133,20 @@ def generate_map(
             media_type="image/png",
             headers={"Content-Disposition": f'inline; filename="map_{lon}_{lat}_{zoom}.png"'},
         )
-    except Exception as e:
-        error_msg = f"Error: {str(e)}"
-        # Log the full error for debugging
-        import traceback
-
-        traceback.print_exc()
+    except MlnativeError:
+        logger.exception(
+            "preview map render failed",
+            extra={"lon": lon, "lat": lat, "zoom": zoom, "width": width, "height": height},
+        )
         return Response(
-            content=error_msg.encode(),
+            content=b"Error: Render failed",
+            media_type="text/plain",
+            status_code=500,
+        )
+    except Exception:
+        logger.exception("unexpected preview server error")
+        return Response(
+            content=b"Error: Internal server error",
             media_type="text/plain",
             status_code=500,
         )
@@ -152,4 +162,4 @@ if __name__ == "__main__":
     print("  - Support for 2x/HighDPI rendering")
     print("\nPress Ctrl+C to stop")
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8000)

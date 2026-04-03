@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 
 from shapely.geometry.base import BaseGeometry
 
-from ._bridge import RenderDaemon
+from ._bridge import MAX_BATCH_VIEWS, RenderDaemon
 from .exceptions import MlnativeError
 
 # OpenFreeMap Liberty style as default
@@ -23,6 +23,9 @@ DEFAULT_STYLE = "https://tiles.openfreemap.org/styles/liberty"
 MAX_DIMENSION = 4096
 MAX_ZOOM = 24
 MAX_PITCH = 85
+WEB_MERCATOR_MAX_LAT = 85.05112878
+MAX_BATCH_OUTPUT_PIXELS = 64_000_000
+MAX_STYLE_JSON_BYTES = 5_000_000
 
 
 class Map:
@@ -232,6 +235,18 @@ class Map:
         if self._style is None:
             self._style = DEFAULT_STYLE
 
+        if len(views) > MAX_BATCH_VIEWS:
+            raise MlnativeError(
+                f"render_batch supports at most {MAX_BATCH_VIEWS} views, got {len(views)}"
+            )
+
+        output_pixels = int(self.width * self.height * (self.pixel_ratio**2) * len(views))
+        if output_pixels > MAX_BATCH_OUTPUT_PIXELS:
+            raise MlnativeError(
+                "render_batch output is too large for one in-memory batch. "
+                "Use fewer views or smaller dimensions."
+            )
+
         # Per-view GeoJSON updates are intentionally unsupported in batch mode.
         if any(view.get("geojson") for view in views):
             raise MlnativeError(
@@ -318,6 +333,14 @@ class Map:
             raise MlnativeError(f"Longitude must be -180 to 180, got {bounds}")
         if not (-90 <= ymin <= 90 and -90 <= ymax <= 90):
             raise MlnativeError(f"Latitude must be -90 to 90, got {bounds}")
+        if not (
+            -WEB_MERCATOR_MAX_LAT <= ymin <= WEB_MERCATOR_MAX_LAT
+            and -WEB_MERCATOR_MAX_LAT <= ymax <= WEB_MERCATOR_MAX_LAT
+        ):
+            raise MlnativeError(
+                "Latitude must be within Web Mercator bounds "
+                f"(±{WEB_MERCATOR_MAX_LAT}), got {bounds}"
+            )
         if xmin > xmax:
             raise MlnativeError(f"xmin must be <= xmax, got {bounds}")
         if ymin > ymax:
@@ -339,9 +362,12 @@ class Map:
             lat_rad = math.radians(lat)
             return math.log(math.tan(lat_rad / 2 + math.pi / 4))
 
-        # Get bounds in mercator space
-        y_min = lat_to_y(ymin)
-        y_max = lat_to_y(ymax)
+        try:
+            # Get bounds in mercator space
+            y_min = lat_to_y(ymin)
+            y_max = lat_to_y(ymax)
+        except ValueError as e:
+            raise MlnativeError("Bounds cannot be projected in Web Mercator") from e
 
         # Longitude spans linearly in mercator
         x_range = xmax - xmin
@@ -357,8 +383,8 @@ class Map:
         # Calculate zoom for each dimension
         # At zoom 0, the world is 256x256 pixels
         # Each zoom level doubles the resolution
-        x_zoom = math.log2((width * 360) / (x_range * 256))
-        y_zoom = math.log2((height * 2 * math.pi) / (y_range * 256))
+        x_zoom = math.inf if x_range == 0 else math.log2((width * 360) / (x_range * 256))
+        y_zoom = math.inf if y_range == 0 else math.log2((height * 2 * math.pi) / (y_range * 256))
 
         # Use the smaller zoom to ensure bounds fit in both dimensions
         zoom = min(x_zoom, y_zoom, max_zoom)
@@ -446,9 +472,16 @@ class Map:
             "data": geojson,
         }
 
-        # Reload style in daemon if already running
+        # Reload style in daemon if already running.
+        # This rewrites the full style JSON each time; keep source data small.
         if self._daemon is not None:
-            self._daemon.reload_style(json.dumps(self._style))
+            style_json = json.dumps(self._style)
+            if len(style_json.encode("utf-8")) > MAX_STYLE_JSON_BYTES:
+                raise MlnativeError(
+                    "GeoJSON update would reload a style larger than 5 MB. "
+                    "Keep source data smaller or recreate the map less often."
+                )
+            self._daemon.reload_style(style_json)
 
     def close(self) -> None:
         """Close the map and release resources."""
