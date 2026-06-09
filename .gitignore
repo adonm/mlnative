@@ -55,9 +55,6 @@ Thumbs.db
 *.tmp
 *.log
 
-# Lock files
-uv.lock
-
 # Symlinks for testing
 lib_symlinks/
 rust/target/

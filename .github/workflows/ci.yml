@@ -34,7 +34,7 @@ jobs:
       - name: Install system dependencies (Linux)
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake libcurl4-openssl-dev libicu-dev libjpeg-dev libpng-dev libssl-dev libuv1-dev libwebp-dev pkg-config zlib1g-dev
+          sudo apt-get install -y cmake glslang-dev libcurl4-openssl-dev libicu-dev libjpeg-dev libpng-dev libspirv-tools-dev libssl-dev libuv1-dev libwebp-dev pkg-config zlib1g-dev
 
       - name: Setup Rust cache
         uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
@@ -116,7 +116,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake libcurl4-openssl-dev libicu-dev libjpeg-dev libpng-dev libssl-dev libuv1-dev libwebp-dev pkg-config zlib1g-dev
+          sudo apt-get install -y cmake glslang-dev libcurl4-openssl-dev libicu-dev libjpeg-dev libpng-dev libspirv-tools-dev libssl-dev libuv1-dev libwebp-dev pkg-config zlib1g-dev
 
       - name: Setup Rust cache
         uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
