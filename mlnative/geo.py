@@ -15,6 +15,24 @@ from shapely.geometry.base import BaseGeometry
 from .exceptions import MlnativeError
 
 
+def _validate_lng_lat(lng: float, lat: float) -> None:
+    """Validate a GeoJSON longitude/latitude coordinate pair."""
+    if not (-180 <= lng <= 180):
+        raise MlnativeError(f"Longitude must be -180 to 180, got {lng}")
+    if not (-90 <= lat <= 90):
+        raise MlnativeError(f"Latitude must be -90 to 90, got {lat}")
+
+
+def _validate_feature(feature: dict[str, Any], index: int) -> None:
+    """Validate the small subset of GeoJSON Feature shape this helper promises."""
+    if not isinstance(feature, dict):
+        raise MlnativeError(f"Feature {index} must be a dict")
+    if feature.get("type") != "Feature":
+        raise MlnativeError(f"Feature {index} must have type='Feature'")
+    if "geometry" not in feature:
+        raise MlnativeError(f"Feature {index} must include geometry")
+
+
 def point(lng: float, lat: float, properties: dict[str, Any] | None = None) -> dict[str, Any]:
     """Create a GeoJSON Point feature.
 
@@ -31,6 +49,10 @@ def point(lng: float, lat: float, properties: dict[str, Any] | None = None) -> d
         >>> sf["geometry"]
         {'type': 'Point', 'coordinates': [-122.4194, 37.7749]}
     """
+    _validate_lng_lat(lng, lat)
+    if properties is not None and not isinstance(properties, dict):
+        raise MlnativeError("properties must be a dict when provided")
+
     geom = Point(lng, lat)
     return {
         "type": "Feature",
@@ -79,12 +101,18 @@ def feature_collection(
                 }
             ],
         }
-    else:
-        # List of features
-        return {
-            "type": "FeatureCollection",
-            "features": list(features),
-        }
+    if not isinstance(features, list):
+        raise MlnativeError(
+            "features must be a list of GeoJSON Feature dicts or a shapely geometry"
+        )
+
+    for index, feature in enumerate(features):
+        _validate_feature(feature, index)
+
+    return {
+        "type": "FeatureCollection",
+        "features": list(features),
+    }
 
 
 def bounds_to_polygon(
@@ -103,6 +131,13 @@ def bounds_to_polygon(
         >>> poly = bounds_to_polygon(bbox)
     """
     xmin, ymin, xmax, ymax = bounds
+    _validate_lng_lat(xmin, ymin)
+    _validate_lng_lat(xmax, ymax)
+    if xmin > xmax:
+        raise MlnativeError(f"xmin must be <= xmax, got {bounds}")
+    if ymin > ymax:
+        raise MlnativeError(f"ymin must be <= ymax, got {bounds}")
+
     coords = [
         [xmin, ymin],
         [xmax, ymin],
@@ -141,14 +176,30 @@ def from_coordinates(
         >>> props = [{"name": "SF"}, {"name": "NYC"}]
         >>> fc = from_coordinates(coords, props)
     """
+    if not isinstance(coordinates, list):
+        raise MlnativeError("coordinates must be a list of (longitude, latitude) tuples")
+
+    for index, coordinate in enumerate(coordinates):
+        if not isinstance(coordinate, tuple) or len(coordinate) != 2:
+            raise MlnativeError(f"Coordinate {index} must be a (longitude, latitude) tuple")
+        lng, lat = coordinate
+        _validate_lng_lat(lng, lat)
+
     if properties is None:
         properties = [{} for _ in coordinates]
+
+    if not isinstance(properties, list):
+        raise MlnativeError("properties must be a list of dicts when provided")
 
     if len(properties) != len(coordinates):
         raise MlnativeError(
             f"Number of properties ({len(properties)}) must match "
             f"number of coordinates ({len(coordinates)})"
         )
+
+    for index, props in enumerate(properties):
+        if not isinstance(props, dict):
+            raise MlnativeError(f"Properties {index} must be a dict")
 
     features = [
         point(lng, lat, props) for (lng, lat), props in zip(coordinates, properties, strict=False)
@@ -177,6 +228,12 @@ def from_latlng(
         >>> coords = [(37.7749, -122.4194), (40.7128, -74.0060)]  # (lat, lng)
         >>> fc = from_latlng(coords)
     """
+    if not isinstance(latlng, list):
+        raise MlnativeError("latlng must be a list of (latitude, longitude) tuples")
+    for index, coordinate in enumerate(latlng):
+        if not isinstance(coordinate, tuple) or len(coordinate) != 2:
+            raise MlnativeError(f"Coordinate {index} must be a (latitude, longitude) tuple")
+
     # Swap from (lat, lng) to (lng, lat)
     coordinates = [(lng, lat) for lat, lng in latlng]
     return from_coordinates(coordinates, properties)

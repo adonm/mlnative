@@ -131,7 +131,6 @@ class RenderDaemon:
         else:
             logger.error("%s: %s", message, error)
 
-
     def __init__(self, timeout: float | None = None) -> None:
         self._process: subprocess.Popen[bytes] | None = None
         self._stderr_lines: deque[str] = deque(maxlen=STDERR_BUFFER_LINES)
@@ -274,9 +273,7 @@ class RenderDaemon:
 
         self._initialized = True
 
-    def _send_command(
-        self, cmd: dict[str, Any], timeout: float | None = None
-    ) -> dict[str, Any]:
+    def _send_command(self, cmd: dict[str, Any], timeout: float | None = None) -> dict[str, Any]:
         """Send a command to the daemon and get response.
 
         Args:
@@ -302,8 +299,14 @@ class RenderDaemon:
             try:
                 return self._responses.get(timeout=wait_timeout)
             except queue.Empty as e:
+                self._log_renderer_error(
+                    "renderer command timed out",
+                    f"cmd={cmd.get('cmd')} timeout={wait_timeout}s",
+                )
+                self.stop()
                 raise MlnativeError(
-                    f"Timeout waiting for renderer response after {wait_timeout}s"
+                    f"Timeout waiting for renderer response after {wait_timeout}s. "
+                    "The renderer process was stopped; create a new Map to retry."
                 ) from e
 
     def render(

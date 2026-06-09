@@ -13,7 +13,7 @@
         
         <article>
             <p><strong>Tip:</strong> Enter coordinates (longitude, latitude), zoom level, and image dimensions. 
-            Enable "HighDPI (@2x)" for retina displays. Style can be a URL or local file path.</p>
+            Enable "HighDPI (@2x)" for retina displays. This local test UI exposes only known style IDs.</p>
         </article>
         
         <form action="/preview" method="post">
@@ -59,8 +59,12 @@
             </label>
             
             <label>
-                Style URL or Path
-                <input type="text" id="style" name="style" value="{{ default_style }}" placeholder="https://tiles.openfreemap.org/styles/liberty" required>
+                Style
+                <select id="style" name="style" required>
+                    {% for style_id in styles %}
+                    <option value="{{ style_id }}" {% if style_id == default_style %}selected{% endif %}>{{ style_id }}</option>
+                    {% endfor %}
+                </select>
             </label>
             
             <fieldset>

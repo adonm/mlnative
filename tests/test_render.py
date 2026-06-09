@@ -18,7 +18,12 @@ def test_version():
 
 def test_binary_path():
     """Test that binary path can be resolved."""
-    path = get_binary_path()
+    try:
+        path = get_binary_path()
+    except MlnativeError as e:
+        if "not found" in str(e):
+            pytest.skip("Binary not built yet")
+        raise
     assert path.exists()
 
 

@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.10] - 2026-06-09
+
+### Fixed
+
+- Stopped renderer daemons after command timeouts to prevent stale responses from being consumed by later calls.
+- Rewound the reused Rust temporary style file before JSON style rewrites.
+- Improved Rust renderer error responses with actionable context.
+- Refreshed the pinned release provenance action digest.
+
+### Changed
+
+- Extracted shared render/style validation helpers in `Map` to reduce duplicated input handling.
+- Tightened GeoJSON helper validation for coordinate ranges and common wrong input shapes.
+- Updated example servers to use a style allowlist instead of arbitrary request-provided URLs or paths.
+- Made the production pool example use bounded waits and a cheap readiness health check.
+- Added troubleshooting and public server safety guidance to docs.
+
 ## [0.3.9] - 2025-02-15
 
 ### Fixed

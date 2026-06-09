@@ -13,7 +13,7 @@ import threading
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from queue import Queue
+from queue import Empty, Queue
 
 from mlnative import Map
 from mlnative.exceptions import MlnativeError
@@ -30,6 +30,7 @@ class MapConfig:
     height: int = 512
     pixel_ratio: float = 1.0
     style_url: str = "https://tiles.openfreemap.org/styles/liberty"
+    acquire_timeout: float = 2.0
 
 
 class MapPool:
@@ -60,11 +61,19 @@ class MapPool:
         if not self._initialized:
             self.initialize()
 
-        m = self._pool.get()
+        try:
+            m = self._pool.get(timeout=self.config.acquire_timeout)
+        except Empty as e:
+            raise MlnativeError("Map pool is busy; retry later") from e
+
         try:
             yield m
         finally:
             self._pool.put(m)
+
+    def is_ready(self) -> bool:
+        """Return whether the pool has been initialized and has workers."""
+        return self._initialized and self.pool_size > 0
 
     def shutdown(self) -> None:
         """Close all Map instances."""
@@ -88,20 +97,24 @@ class MapRenderer:
     ) -> bytes | None:
         """Render a map with error handling."""
         try:
-            with self.pool.get_map() as m:
-                png = m.render(center=center, zoom=zoom, bearing=bearing, pitch=pitch)
+            with self.pool.get_map() as map_renderer:
+                png = map_renderer.render(center=center, zoom=zoom, bearing=bearing, pitch=pitch)
                 logger.debug(f"Rendered map: center={center}, zoom={zoom}, size={len(png)}")
                 return png
         except MlnativeError as e:
             logger.error(f"Render failed: {e}")
             return None
 
-    def health_check(self) -> bool:
-        """Check if the renderer is healthy."""
+    def health_check(self, full_render: bool = False) -> bool:
+        """Check renderer readiness; optionally perform a full dependency render."""
         try:
-            with self.pool.get_map() as m:
-                png = m.render(center=[0, 0], zoom=1)
-                return len(png) > 0
+            if not self.pool.is_ready():
+                self.pool.initialize()
+            if not full_render:
+                return self.pool.is_ready()
+            with self.pool.get_map() as map_renderer:
+                png = map_renderer.render(center=[0, 0], zoom=1)
+            return len(png) > 0
         except Exception as e:
             logger.error(f"Health check failed: {e}")
             return False

@@ -56,7 +56,6 @@ class TestGetBinaryPath:
         except MlnativeError as e:
             assert PATH_BINARY_OPT_IN_ENV in str(e)
 
-
     def test_binary_name_format(self):
         """Test that binary name follows expected format."""
         try:
@@ -119,6 +118,42 @@ class TestRenderDaemonValidation:
             raise
         finally:
             daemon.stop()
+
+    def test_timeout_stops_daemon(self, monkeypatch):
+        """A timeout should terminate the daemon to avoid stale queued responses."""
+        from mlnative._bridge import RenderDaemon
+
+        daemon = RenderDaemon(timeout=0.01)
+        stopped = False
+
+        class SlowResponses:
+            def get(self, timeout):
+                import queue
+
+                raise queue.Empty
+
+        class FakeStdin:
+            def write(self, _payload):
+                return None
+
+            def flush(self):
+                return None
+
+        class FakeProcess:
+            stdin = FakeStdin()
+
+        def fake_stop():
+            nonlocal stopped
+            stopped = True
+
+        daemon._process = FakeProcess()
+        daemon._responses = SlowResponses()
+        monkeypatch.setattr(daemon, "stop", fake_stop)
+
+        with pytest.raises(MlnativeError, match="stopped"):
+            daemon._send_command({"cmd": "render"})
+
+        assert stopped
 
 
 class TestTimeoutConfiguration:

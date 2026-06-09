@@ -7,6 +7,7 @@ from shapely import Point
 
 from mlnative import Map
 from mlnative.exceptions import MlnativeError
+from mlnative.map import _normalize_style_input, _normalize_view
 
 
 class TestFitBounds:
@@ -17,7 +18,6 @@ class TestFitBounds:
         m = Map(width=512, height=512)
         with pytest.raises(MlnativeError, match="Web Mercator"):
             m.fit_bounds((-10, -90, 10, 10))
-
 
     def test_fit_bounds_basic(self):
         """Test basic bounds fitting."""
@@ -184,6 +184,28 @@ class TestSetGeojson:
         assert "markers" in style.get("sources", {})
 
 
+class TestValidationHelpers:
+    """Tests for shared render/style validation helpers."""
+
+    def test_normalize_view_normalizes_bearing(self):
+        """Bearing wraps to the renderer's 0-360 range."""
+        view = _normalize_view([0, 0], 1, bearing=725, pitch=0, label="View")
+        assert view["bearing"] == 5
+
+    def test_normalize_view_rejects_bad_center_shape(self):
+        """Bad center input should fail with a clear message."""
+        with pytest.raises(MlnativeError, match="longitude, latitude"):
+            _normalize_view([0], 1)
+
+    def test_load_style_file_requires_json_object(self, tmp_path):
+        """Style files should contain a MapLibre JSON object."""
+        style_path = tmp_path / "style.json"
+        style_path.write_text("[]")
+
+        with pytest.raises(MlnativeError, match="JSON object"):
+            _normalize_style_input(style_path)
+
+
 class TestRenderBatchValidation:
     """Tests for render_batch() validation."""
 
@@ -200,7 +222,6 @@ class TestRenderBatchValidation:
         views = [{"center": [0, 0], "zoom": 1}] * 4
         with pytest.raises(MlnativeError, match="too large"):
             m.render_batch(views)
-
 
     def test_render_batch_rejects_per_view_geojson(self):
         """Per-view GeoJSON in batch mode should fail fast."""

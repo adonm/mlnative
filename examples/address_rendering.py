@@ -7,7 +7,9 @@ maps from addresses without manually looking up coordinates.
 try:
     from geopy.geocoders import ArcGIS
 except ImportError as e:
-    raise SystemExit("Install the optional geo extra to run this example: pip install 'mlnative[geo]'") from e
+    raise SystemExit(
+        "Install the optional geo extra to run this example: pip install 'mlnative[geo]'"
+    ) from e
 
 from mlnative import Map
 

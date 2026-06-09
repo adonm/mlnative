@@ -65,6 +65,8 @@ Both images show the exact same geographic area. The 2x version has 4x more pixe
 
 ## Examples
 
+For the complete API reference, see [docs/API.md](docs/API.md).
+
 ### Render from address (optional `geo` extra)
 
 ```python
@@ -263,7 +265,18 @@ The `pixel_ratio` parameter controls the resolution of the output image:
 
 - **Default style**: OpenFreeMap Liberty (no configuration needed)
 - **GeoJSON updates**: Requires style loaded as dict, not URL
-- **Platform**: Linux only (macOS/Windows builds disabled due to upstream issues)
+- **Platform**: Linux x64 and ARM64 wheels are published. Other platforms require a source build and compatible native dependencies.
+
+### Troubleshooting
+
+- **Native renderer binary not found**: install a platform wheel or run `just build-rust` for source builds. PATH lookup is disabled unless `MLNATIVE_USE_SYSTEM_BINARY=1` is set.
+- **Protocol version mismatch**: rebuild the Rust renderer with `just build-rust`; the Python package and binary are out of sync.
+- **Timeout waiting for renderer**: increase `MLNATIVE_TIMEOUT` for slow tile/style services. A timed-out renderer is stopped; create a new `Map` to retry.
+- **`set_geojson()` fails with URL-loaded style**: load the style as a dict before mutating sources.
+
+### Server example safety
+
+The FastAPI and web UI examples bind to `127.0.0.1` and use a small style allowlist. Before exposing a render endpoint publicly, add authentication, per-client quotas/rate limits, cache hot responses, cap worker concurrency, and restrict renderer network egress.
 
 ## Development
 

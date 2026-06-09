@@ -3,7 +3,9 @@
 import pytest
 from shapely import Point
 
+from mlnative.exceptions import MlnativeError
 from mlnative.geo import (
+    bounds_to_polygon,
     feature_collection,
     from_coordinates,
     from_latlng,
@@ -25,6 +27,11 @@ class TestPoint:
         p = point(-122.4194, 37.7749, {"name": "SF"})
         assert p["properties"]["name"] == "SF"
 
+    def test_point_rejects_invalid_longitude(self):
+        """Longitude validation should be near helper input."""
+        with pytest.raises(MlnativeError, match="Longitude"):
+            point(-200, 37.7749)
+
 
 class TestFeatureCollection:
     """Tests for feature_collection() helper."""
@@ -42,6 +49,11 @@ class TestFeatureCollection:
         fc = feature_collection(geom)
         assert fc["type"] == "FeatureCollection"
         assert len(fc["features"]) == 1
+
+    def test_rejects_non_feature_dict(self):
+        """Feature collections should reject common wrong shapes."""
+        with pytest.raises(MlnativeError, match="Feature 0"):
+            feature_collection([{"type": "Point", "coordinates": [0, 0]}])
 
 
 class TestFromCoordinates:
@@ -63,12 +75,15 @@ class TestFromCoordinates:
 
     def test_properties_length_mismatch(self):
         """Test error when properties list length doesn't match coordinates."""
-        from mlnative.exceptions import MlnativeError
-
         coords = [(-122.4194, 37.7749), (-74.0060, 40.7128)]
         props = [{"name": "SF"}]
         with pytest.raises(MlnativeError, match="Number of properties"):
             from_coordinates(coords, props)
+
+    def test_rejects_list_coordinate(self):
+        """Coordinates should be explicit tuples to avoid order ambiguity."""
+        with pytest.raises(MlnativeError, match="Coordinate 0"):
+            from_coordinates([[-122.4194, 37.7749]])
 
 
 class TestFromLatLng:
@@ -80,3 +95,12 @@ class TestFromLatLng:
         fc = from_latlng(latlng)
         assert fc["type"] == "FeatureCollection"
         assert len(fc["features"]) == 2
+
+
+class TestBoundsToPolygon:
+    """Tests for bounds_to_polygon() helper."""
+
+    def test_rejects_reversed_bounds(self):
+        """Reversed bounds should fail before creating a polygon."""
+        with pytest.raises(MlnativeError, match="xmin"):
+            bounds_to_polygon((1, 0, -1, 2))

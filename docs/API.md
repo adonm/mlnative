@@ -213,6 +213,8 @@ Release resources. Called automatically when used as context manager.
 
 Located in `mlnative.geo`:
 
+Helpers validate longitude/latitude ranges and common wrong shapes near the input boundary. Coordinate helper inputs are explicit tuples: `(lng, lat)` for GeoJSON order or `(lat, lng)` for GPS order.
+
 ### `point(lng, lat, properties=None)`
 
 Create a GeoJSON Point feature.
@@ -279,6 +281,19 @@ try:
 except MlnativeError as e:
     print(f"Error: {e}")
 ```
+
+Common cases:
+
+- Missing native binary: install a platform wheel or build with `just build-rust`.
+- Protocol version mismatch: rebuild the Rust binary so it matches the Python package.
+- Renderer timeout: the daemon is stopped to avoid stale responses; create a new `Map` to retry.
+- GeoJSON source update on URL style: load the style JSON as a dict first.
+
+---
+
+## Example server safety
+
+The included servers are examples, not production services. They bind to loopback and use style IDs from an allowlist. Public deployments should add authentication, quotas/rate limits, caching, concurrency budgets, and explicit network egress controls for style/tile requests.
 
 ---
 

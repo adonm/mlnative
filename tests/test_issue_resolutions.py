@@ -131,7 +131,7 @@ def test_toolchain_and_dependency_versions_are_pinned():
 def test_release_workflow_attest_action_is_digest_pinned():
     """Release provenance attestations should use pinned action digests."""
     source = (ROOT / ".github/workflows/release.yml").read_text()
-    pinned = "actions/attest-build-provenance@b3e506e8c389afc651c5bacf2b8f2a1ea0557215"
+    pinned = "actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32"
     assert source.count(pinned) == 2
 
 
@@ -143,6 +143,19 @@ def test_rust_renderer_reuses_one_temp_style_file_for_json_reload():
     assert source.count("NamedTempFile::new()") == 1
     assert "if temp_style_file.is_none()" in source
     assert "temp_file.as_file_mut().set_len(0)?;" in source
+    assert "temp_file.as_file_mut().seek(SeekFrom::Start(0))?;" in source
+
+
+def test_example_servers_use_style_allowlist():
+    """Example servers should not let request data choose arbitrary style URLs/paths."""
+    fastapi_source = (ROOT / "examples/fastapi_server.py").read_text()
+    web_source = (ROOT / "examples/web_test_server.py").read_text()
+    catalog_source = (ROOT / "examples/style_catalog.py").read_text()
+
+    assert "resolve_style(style)" in fastapi_source
+    assert "resolve_style(style)" in web_source
+    assert "STYLES =" in catalog_source
+    assert "style: str = Query(DEFAULT_STYLE_ID)" in fastapi_source
 
 
 def test_set_geojson_reloads_updated_style_for_running_daemon(simple_style, simple_geojson):

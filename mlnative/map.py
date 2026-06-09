@@ -28,6 +28,100 @@ MAX_BATCH_OUTPUT_PIXELS = 64_000_000
 MAX_STYLE_JSON_BYTES = 5_000_000
 
 
+def _validate_dimension(width: int, height: int) -> None:
+    """Validate logical map dimensions."""
+    if width <= 0 or height <= 0:
+        raise MlnativeError(f"Width and height must be positive, got {width}x{height}")
+
+    if width > MAX_DIMENSION or height > MAX_DIMENSION:
+        raise MlnativeError(f"Width and height must be <= {MAX_DIMENSION}, got {width}x{height}")
+
+
+def _validate_pixel_ratio(pixel_ratio: float) -> None:
+    """Validate HiDPI scale factor."""
+    if pixel_ratio <= 0 or pixel_ratio > 4:
+        raise MlnativeError(f"pixel_ratio must be between 0 and 4 (exclusive), got {pixel_ratio}")
+
+
+def _normalize_center(center: list[float], label: str = "Center") -> list[float]:
+    """Validate and return a [longitude, latitude] center."""
+    if not isinstance(center, list) or len(center) != 2:
+        raise MlnativeError(f"{label} must be [longitude, latitude], got {center}")
+
+    lon, lat = center
+    if not (-180 <= lon <= 180):
+        raise MlnativeError(f"{label} longitude must be -180 to 180, got {lon}")
+    if not (-90 <= lat <= 90):
+        raise MlnativeError(f"{label} latitude must be -90 to 90, got {lat}")
+
+    return [lon, lat]
+
+
+def _normalize_view(
+    center: list[float],
+    zoom: float,
+    bearing: float = 0,
+    pitch: float = 0,
+    label: str = "View",
+) -> dict[str, Any]:
+    """Validate and normalize render view parameters."""
+    normalized_center = _normalize_center(center, label)
+
+    if not (0 <= zoom <= MAX_ZOOM):
+        raise MlnativeError(f"{label} zoom must be 0-{MAX_ZOOM}, got {zoom}")
+
+    if not (0 <= pitch <= MAX_PITCH):
+        raise MlnativeError(f"{label} pitch must be 0-{MAX_PITCH}, got {pitch}")
+
+    return {
+        "center": normalized_center,
+        "zoom": zoom,
+        "bearing": bearing % 360,
+        "pitch": pitch,
+    }
+
+
+def _load_style_file(path: Path) -> dict[str, Any]:
+    """Load style JSON from a local file path."""
+    if not path.exists():
+        raise MlnativeError(f"Style file not found: {path}")
+    try:
+        with open(path) as f:
+            style = json.load(f)
+    except json.JSONDecodeError as e:
+        raise MlnativeError(f"Invalid JSON in style file: {e}") from e
+    if not isinstance(style, dict):
+        raise MlnativeError(f"Style file must contain a JSON object: {path}")
+    return style
+
+
+def _normalize_style_input(style: str | dict[str, Any] | Path) -> str | dict[str, Any]:
+    """Normalize public style input into URL string, path-loaded dict, or dict."""
+    if isinstance(style, dict):
+        return style
+
+    if isinstance(style, (str, Path)):
+        style_str = str(style)
+        parsed = urlparse(style_str)
+
+        if parsed.scheme in ("http", "https"):
+            return style_str
+        if parsed.scheme == "":
+            return _load_style_file(Path(style))
+        raise MlnativeError(f"Unsupported style format: {style}")
+
+    raise MlnativeError(f"Style must be str, dict, or Path, got {type(style)}")
+
+
+def _serialize_style(style: str | dict[str, Any] | None) -> str:
+    """Serialize the active style for the Rust daemon."""
+    if style is None:
+        return DEFAULT_STYLE
+    if isinstance(style, dict):
+        return json.dumps(style)
+    return style
+
+
 class Map:
     """
     A MapLibre GL Native map renderer using native Rust backend.
@@ -67,18 +161,8 @@ class Map:
             height: Image height in pixels (1-4096)
             pixel_ratio: Pixel ratio for high-DPI rendering (default 1.0, max 4.0)
         """
-        if width <= 0 or height <= 0:
-            raise MlnativeError(f"Width and height must be positive, got {width}x{height}")
-
-        if width > MAX_DIMENSION or height > MAX_DIMENSION:
-            raise MlnativeError(
-                f"Width and height must be <= {MAX_DIMENSION}, got {width}x{height}"
-            )
-
-        if pixel_ratio <= 0 or pixel_ratio > 4:
-            raise MlnativeError(
-                f"pixel_ratio must be between 0 and 4 (exclusive), got {pixel_ratio}"
-            )
+        _validate_dimension(width, height)
+        _validate_pixel_ratio(pixel_ratio)
 
         self.width = width
         self.height = height
@@ -91,15 +175,12 @@ class Map:
         """Get or create the render daemon."""
         if self._daemon is None:
             self._daemon = RenderDaemon()
-
-            style = self._style
-            if style is None:
-                style = DEFAULT_STYLE
-
-            if isinstance(style, dict):
-                style = json.dumps(style)
-
-            self._daemon.start(self.width, self.height, style, self.pixel_ratio)
+            self._daemon.start(
+                self.width,
+                self.height,
+                _serialize_style(self._style),
+                self.pixel_ratio,
+            )
 
         return self._daemon
 
@@ -116,37 +197,10 @@ class Map:
         if self._closed:
             raise MlnativeError("Map has been closed")
 
-        if isinstance(style, dict):
-            self._style = style
-        elif isinstance(style, (str, Path)):
-            style_str = str(style)
-            parsed = urlparse(style_str)
-
-            if parsed.scheme in ("http", "https"):
-                # URL style
-                self._style = style_str
-            elif parsed.scheme == "":
-                # File path
-                path = Path(style)
-                if not path.exists():
-                    raise MlnativeError(f"Style file not found: {style}")
-                try:
-                    with open(path) as f:
-                        self._style = json.load(f)
-                except json.JSONDecodeError as e:
-                    raise MlnativeError(f"Invalid JSON in style file: {e}") from e
-            else:
-                raise MlnativeError(f"Unsupported style format: {style}")
-        else:
-            raise MlnativeError(f"Style must be str, dict, or Path, got {type(style)}")
+        self._style = _normalize_style_input(style)
 
         if self._daemon is not None:
-            daemon_style: str
-            if isinstance(self._style, dict):
-                daemon_style = json.dumps(self._style)
-            else:
-                daemon_style = self._style or DEFAULT_STYLE
-            self._daemon.reload_style(daemon_style)
+            self._daemon.reload_style(_serialize_style(self._style))
 
     def render(
         self, center: list[float], zoom: float, bearing: float = 0, pitch: float = 0
@@ -173,30 +227,11 @@ class Map:
             # Use default OpenFreeMap Liberty style
             self._style = DEFAULT_STYLE
 
-        # Validate center
-        if len(center) != 2:
-            raise MlnativeError(f"Center must be [longitude, latitude], got {center}")
-
-        lon, lat = center
-        if not (-180 <= lon <= 180):
-            raise MlnativeError(f"Longitude must be -180 to 180, got {lon}")
-        if not (-90 <= lat <= 90):
-            raise MlnativeError(f"Latitude must be -90 to 90, got {lat}")
-
-        # Validate zoom
-        if not (0 <= zoom <= MAX_ZOOM):
-            raise MlnativeError(f"Zoom must be 0-{MAX_ZOOM}, got {zoom}")
-
-        # Validate pitch
-        if not (0 <= pitch <= MAX_PITCH):
-            raise MlnativeError(f"Pitch must be 0-{MAX_PITCH}, got {pitch}")
-
-        # Normalize bearing to 0-360
-        bearing = bearing % 360
+        view = _normalize_view(center, zoom, bearing, pitch, "Center")
 
         try:
             daemon = self._get_daemon()
-            return daemon.render(center, zoom, bearing, pitch)
+            return daemon.render(view["center"], view["zoom"], view["bearing"], view["pitch"])
         except Exception as e:
             raise MlnativeError(f"Render failed: {e}") from e
 
@@ -258,33 +293,17 @@ class Map:
         normalized_views = []
         for i, view in enumerate(views):
             center = view.get("center")
-            if not center or len(center) != 2:
-                raise MlnativeError(f"View {i}: Invalid center")
-
-            lon, lat = center
-            if not (-180 <= lon <= 180):
-                raise MlnativeError(f"View {i}: Longitude must be -180 to 180")
-            if not (-90 <= lat <= 90):
-                raise MlnativeError(f"View {i}: Latitude must be -90 to 90")
-
-            zoom = view.get("zoom", 0)
-            if not (0 <= zoom <= MAX_ZOOM):
-                raise MlnativeError(f"View {i}: Zoom must be 0-{MAX_ZOOM}")
-
-            pitch = view.get("pitch", 0)
-            if not (0 <= pitch <= MAX_PITCH):
-                raise MlnativeError(f"View {i}: Pitch must be 0-{MAX_PITCH}")
-
-            bearing = view.get("bearing", 0) % 360
-
-            normalized_view = {
-                "center": center,
-                "zoom": zoom,
-                "bearing": bearing,
-                "pitch": pitch,
-            }
-
-            normalized_views.append(normalized_view)
+            if center is None:
+                raise MlnativeError(f"View {i} center must be [longitude, latitude]")
+            normalized_views.append(
+                _normalize_view(
+                    center,
+                    view.get("zoom", 0),
+                    view.get("bearing", 0),
+                    view.get("pitch", 0),
+                    f"View {i}",
+                )
+            )
 
         try:
             daemon = self._get_daemon()

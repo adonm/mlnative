@@ -1,6 +1,6 @@
 use maplibre_native::{Image, ImageRenderer, ImageRendererBuilder, RenderingError, Static};
 use serde::{Deserialize, Serialize};
-use std::io::{self, BufRead, Write};
+use std::io::{self, BufRead, Seek, SeekFrom, Write};
 use std::num::NonZeroU32;
 use tempfile::NamedTempFile;
 
@@ -94,6 +94,7 @@ impl Renderer {
                 .as_mut()
                 .ok_or("temporary style file unavailable")?;
             temp_file.as_file_mut().set_len(0)?;
+            temp_file.as_file_mut().seek(SeekFrom::Start(0))?;
             temp_file.as_file_mut().write_all(style.as_bytes())?;
             temp_file.as_file_mut().flush()?;
             renderer.load_style_from_path(temp_file.path())?;
@@ -245,11 +246,11 @@ fn main() {
                         png_lengths: None,
                         error: None,
                     }),
-                    Err(_) => send_response(&Response {
+                    Err(e) => send_response(&Response {
                         status: "error".to_string(),
                         png_len: None,
                         png_lengths: None,
-                        error: Some("Init failed".to_string()),
+                        error: Some(format!("Init failed: {}", e)),
                     }),
                 }
             }
@@ -280,7 +281,7 @@ fn main() {
                     status: "error".to_string(),
                     png_len: None,
                     png_lengths: None,
-                    error: Some("Render failed".to_string()),
+                    error: Some(format!("Render failed: {}", e)),
                 }),
             },
             Command::ReloadStyle { style } => match renderer.reload_style(&style) {
@@ -290,11 +291,11 @@ fn main() {
                     png_lengths: None,
                     error: None,
                 }),
-                Err(_) => send_response(&Response {
+                Err(e) => send_response(&Response {
                     status: "error".to_string(),
                     png_len: None,
                     png_lengths: None,
-                    error: Some("Reload style failed".to_string()),
+                    error: Some(format!("Reload style failed: {}", e)),
                 }),
             },
             Command::RenderBatch { views } => {
@@ -319,12 +320,12 @@ fn main() {
                                 break;
                             }
                         },
-                        Err(_) => {
+                        Err(e) => {
                             error_response = Some(Response {
                                 status: "error".to_string(),
                                 png_len: None,
                                 png_lengths: None,
-                                error: Some("Batch render failed".to_string()),
+                                error: Some(format!("Batch render failed: {}", e)),
                             });
                             break;
                         }

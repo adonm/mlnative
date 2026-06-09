@@ -12,6 +12,7 @@ import uvicorn
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
+from style_catalog import DEFAULT_STYLE_ID, STYLES, resolve_style
 
 from mlnative import Map, MlnativeError
 
@@ -19,9 +20,6 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="mlnative Test Interface")
 templates = Jinja2Templates(directory="examples/templates")
-
-# Default OpenFreeMap Liberty style
-DEFAULT_STYLE = "https://tiles.openfreemap.org/styles/liberty"
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -31,7 +29,8 @@ def index(request: Request):
         "test_form.html",
         {
             "request": request,
-            "default_style": DEFAULT_STYLE,
+            "default_style": DEFAULT_STYLE_ID,
+            "styles": STYLES,
             "default_lon": -122.4194,
             "default_lat": 37.7749,
             "default_zoom": 12,
@@ -49,13 +48,18 @@ def preview(
     zoom: float = Form(12),
     width: int = Form(512),
     height: int = Form(512),
-    style: str = Form(DEFAULT_STYLE),
+    style: str = Form(DEFAULT_STYLE_ID),
     bearing: float = Form(0),
     pitch: float = Form(0),
     highdpi: bool = Form(False),
 ):
     """Show the Python code and generate preview."""
     pixel_ratio = 2.0 if highdpi else 1.0
+    try:
+        style_url = resolve_style(style)
+    except MlnativeError:
+        style = DEFAULT_STYLE_ID
+        style_url = resolve_style(style)
 
     # Generate Python code example
     python_code = f'''from mlnative import Map
@@ -68,7 +72,7 @@ map = Map(
 )
 
 # Load style
-map.load_style("{style}")
+map.load_style("{style_url}")
 
 # Render map
 png_bytes = map.render(
@@ -101,6 +105,7 @@ with open("map.png", "wb") as f:
             "width": width,
             "height": height,
             "style": style,
+            "style_url": style_url,
             "bearing": bearing,
             "pitch": pitch,
             "highdpi": highdpi,
@@ -115,7 +120,7 @@ def generate_map(
     zoom: float,
     width: int = 512,
     height: int = 512,
-    style: str = DEFAULT_STYLE,
+    style: str = DEFAULT_STYLE_ID,
     bearing: float = 0,
     pitch: float = 0,
     highdpi: bool = False,
@@ -124,8 +129,13 @@ def generate_map(
     pixel_ratio = 2.0 if highdpi else 1.0
 
     try:
+        style_url = resolve_style(style)
+    except MlnativeError as e:
+        return Response(content=str(e).encode(), media_type="text/plain", status_code=400)
+
+    try:
         with Map(width=width, height=height, pixel_ratio=pixel_ratio) as m:
-            m.load_style(style)
+            m.load_style(style_url)
             png_bytes = m.render(center=[lon, lat], zoom=zoom, bearing=bearing, pitch=pitch)
 
         return Response(

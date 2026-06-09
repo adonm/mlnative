@@ -8,7 +8,7 @@ GET /static/{lon},{lat},{zoom}/{width}x{height}.png
 Query parameters:
 - bearing: Rotation in degrees (default 0)
 - pitch: Tilt in degrees (default 0)
-- style: Style URL (default: OpenFreeMap Liberty)
+- style: Style ID from the allowlist (default: liberty)
 """
 
 import logging
@@ -16,6 +16,7 @@ import logging
 import uvicorn
 from fastapi import FastAPI, Query, Response
 from fastapi.responses import JSONResponse
+from style_catalog import DEFAULT_STYLE_ID, STYLES, resolve_style
 
 from mlnative import Map, MlnativeError
 
@@ -23,18 +24,16 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="mlnative Static Maps API")
 
-# Default OpenFreeMap Liberty style
-DEFAULT_STYLE = "https://tiles.openfreemap.org/styles/liberty"
-
 
 @app.get("/")
 def root():
     """API info."""
     return {
         "name": "mlnative Static Maps API",
-        "version": "0.1.0",
+        "version": "0.3.10",
         "endpoints": {"static_map": "/static/{lon},{lat},{zoom}/{width}x{height}.png"},
-        "default_style": DEFAULT_STYLE,
+        "default_style": DEFAULT_STYLE_ID,
+        "styles": sorted(STYLES),
     }
 
 
@@ -47,7 +46,7 @@ def static_map(
     height: int,
     bearing: float = Query(0, ge=0, le=360),
     pitch: float = Query(0, ge=0, le=60),
-    style: str = Query(DEFAULT_STYLE),
+    style: str = Query(DEFAULT_STYLE_ID),
 ):
     """
     Generate a static map image.
@@ -60,7 +59,7 @@ def static_map(
     - height: Image height in pixels (max 2048)
     - bearing: Rotation in degrees (0-360)
     - pitch: Tilt in degrees (0-60)
-    - style: Map style URL
+    - style: Map style ID: liberty, positron, or dark
     """
     # Validate dimensions
     if width > 2048 or height > 2048:
@@ -72,9 +71,14 @@ def static_map(
         return JSONResponse(status_code=400, content={"error": "Dimensions must be positive"})
 
     try:
+        style_url = resolve_style(style)
+    except MlnativeError as e:
+        return JSONResponse(status_code=400, content={"error": str(e)})
+
+    try:
         # Render map
         with Map(width=width, height=height) as m:
-            m.load_style(style)
+            m.load_style(style_url)
             png_bytes = m.render(center=[lon, lat], zoom=zoom, bearing=bearing, pitch=pitch)
 
         return Response(
@@ -102,7 +106,8 @@ def health():
 
 if __name__ == "__main__":
     print("Starting mlnative Static Maps API server...")
-    print(f"Default style: {DEFAULT_STYLE}")
+    print(f"Default style: {DEFAULT_STYLE_ID}")
+    print(f"Available styles: {', '.join(sorted(STYLES))}")
     print("\nExample URLs:")
     print("  http://localhost:8000/static/-122.4194,37.7749,12/512x512.png")
     print("  http://localhost:8000/static/-74.0060,40.7128,11/800x600.png?bearing=45&pitch=30")
