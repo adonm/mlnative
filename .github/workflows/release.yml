@@ -21,6 +21,16 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
+      - name: Install system dependencies (Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake glslang-dev libcurl4-openssl-dev libicu-dev libjpeg-dev libpng-dev libssl-dev libuv1-dev libwebp-dev pkg-config spirv-tools zlib1g-dev
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
+        with:
+          workspaces: rust
+
       - name: Setup tools with mise
         uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4
         with:
@@ -31,7 +41,7 @@ jobs:
         run: just ci-setup
 
       - name: Build platform wheels
-        run: just ci-build-wheels
+        run: just ci-build-host-wheel ${{ matrix.platform }}
 
       - name: Upload wheels
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

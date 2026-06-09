@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.11] - 2026-06-09
+## [0.3.13] - 2026-06-09
 
 ### Added
 
@@ -21,7 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Committed `uv.lock` for frozen CI security scans.
-- Installed GLSL/SPIR-V build dependencies in CI and manylinux release images.
+- Installed GLSL/SPIR-V build dependencies in CI.
+- Switched release wheel jobs to the same host binary build path verified by CI.
 
 ## [0.3.10] - 2026-06-09
 

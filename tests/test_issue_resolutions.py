@@ -144,7 +144,7 @@ def test_cibuildwheel_builds_real_platform_wheels():
     assert "ci-build-wheels" in justfile
     assert "build-cibw-image" in justfile
     assert "ci-build-wheel <platform>" not in justfile
-    assert "just ci-build-wheels" in release
+    assert "just ci-build-host-wheel" in release
     assert "Root-Is-Purelib: false" in helper
     assert "Tag: py3-none-{platform_tag}" in helper
     assert "openssl-devel" in dockerfile

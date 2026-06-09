@@ -116,6 +116,17 @@ ci-build-binary PLATFORM:
 ci-build-wheels: build-cibw-image
     uv run cibuildwheel --platform linux --output-dir dist
 
+# CI: Build one platform wheel from the current GitHub runner host
+ci-build-host-wheel PLATFORM:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    rm -rf dist wheelhouse
+    just ci-build-binary {{PLATFORM}}
+    uv build --wheel --out-dir wheelhouse
+    for wheel in wheelhouse/*.whl; do
+        uv run python scripts/build_cibw_wheel.py retag "${wheel}" dist
+    done
+
 # CI: Build source distribution
 ci-build-sdist:
     uv pip install build
