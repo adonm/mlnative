@@ -44,6 +44,7 @@ dev = [
     "mypy>=1.13.0",
     "pillow>=11.0",
     "playwright>=1.40",
+    "cibuildwheel>=2.23",
 ]
 
 [project.urls]
@@ -65,6 +66,7 @@ include = [
     "/rust/Cargo.lock",
     "/rust/README.md",
     "/README.md",
+    "/CONTRIBUTING.md",
     "/LICENSE",
     "/pyproject.toml",
 ]
@@ -77,7 +79,6 @@ exclude = [
     "/.mise.toml",
     "/Justfile",
     "/Dockerfile.test",
-    "/AGENTS.md",
     "/test_rust_backend.py",
 ]
 
@@ -112,6 +113,22 @@ known-first-party = ["mlnative"]
 markers = [
     "integration: marks tests that render actual PNGs (requires network and native binary)",
 ]
+
+[tool.cibuildwheel]
+build = "cp312-manylinux_x86_64 cp312-manylinux_aarch64 cp313-manylinux_x86_64 cp313-manylinux_aarch64"
+skip = "*-musllinux_*"
+build-frontend = "build"
+build-verbosity = 1
+test-command = "python -c \"from mlnative._bridge import get_binary_path; p = get_binary_path(); assert p.exists(), p; print(p)\""
+
+[tool.cibuildwheel.linux]
+manylinux-x86_64-image = "mlnative-manylinux:latest"
+manylinux-aarch64-image = "mlnative-manylinux:latest"
+before-build = "python scripts/build_cibw_wheel.py build-binary"
+repair-wheel-command = "python scripts/build_cibw_wheel.py retag {wheel} {dest_dir}"
+
+[tool.cibuildwheel.environment]
+MLN_CORE_LIBRARY_USE_AMALGAM = "ON"
 
 [tool.mypy]
 python_version = "3.12"

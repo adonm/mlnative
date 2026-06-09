@@ -63,10 +63,10 @@
 - Category: complexity
 - Reference: ASVS `v5.0.0-15.1.2`; grugbrain.dev
 - Recommendation: Use a real platform-wheel pipeline (`cibuildwheel`, `auditwheel`, `delocate`, `maturin`, or equivalent) or rewrite embedded wheel metadata consistently. The current release job renames the filename only; a local build still emits `Root-Is-Purelib: true` and `Tag: py3-none-any`.
-- Status: open
+- Status: resolved in 0.3.10 (`cibuildwheel` builds Linux platform wheels and repair retags wheel metadata)
 
 ### 9) CI integration tests depend on live third-party network and remote tile/style services
-- Location: `tests/test_render.py:34-39`, `tests/test_render.py:85-95`, `.github/workflows/ci.yml:138-222`, `docs/CI.md:20-33`, `docs/CI.md:128-134`
+- Location: `tests/test_render.py:34-39`, `tests/test_render.py:85-95`, `.github/workflows/ci.yml:138-222`, `CONTRIBUTING.md`
 - Category: complexity
 - Reference: ASVS `v5.0.0-15.1.3`; grugbrain.dev
 - Recommendation: Move CI to local fixtures, a pinned test style, or a local mock tile server. Current smoke/integration coverage is useful, but it is also coupled to OpenFreeMap availability and network latency.
@@ -84,7 +84,7 @@
 - Category: security
 - Reference: ASVS `v5.0.0-15.1.1`, `v5.0.0-15.2.1`
 - Recommendation: Refresh `actions/attest-build-provenance` to digest `a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32` and keep digest refreshes within the repo’s documented remediation window.
-- Status: open
+- Status: resolved in 0.3.10
 
 ## Resolved log
 - Example servers now bind to loopback by default instead of `0.0.0.0` (`examples/fastapi_server.py:112`, `examples/web_test_server.py:165`).

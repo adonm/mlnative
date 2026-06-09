@@ -280,7 +280,7 @@ The FastAPI and web UI examples bind to `127.0.0.1` and use a small style allowl
 
 ## Development
 
-See [docs/CI.md](docs/CI.md) for CI/CD setup and requirements.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local development, CI/CD, style, and release guidance.
 
 ## License
 

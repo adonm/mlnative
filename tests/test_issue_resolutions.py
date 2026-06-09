@@ -126,6 +126,50 @@ def test_toolchain_and_dependency_versions_are_pinned():
         assert re.fullmatch(r"\d+\.\d+\.\d+", mise["tools"][tool])
 
     assert re.fullmatch(r"\d+\.\d+(?:\.\d+)?", cargo["dependencies"]["tempfile"])
+    assert cargo["dependencies"]["maplibre_native"] == "0.8.2"
+
+
+def test_cibuildwheel_builds_real_platform_wheels():
+    """Release wheels should be built by cibuildwheel instead of filename renaming."""
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    justfile = (ROOT / "Justfile").read_text()
+    release = (ROOT / ".github/workflows/release.yml").read_text()
+    helper = (ROOT / "scripts/build_cibw_wheel.py").read_text()
+    dockerfile = (ROOT / "docker/cibuildwheel-manylinux.Dockerfile").read_text()
+
+    assert "tool" in pyproject and "cibuildwheel" in pyproject["tool"]
+    assert pyproject["tool"]["cibuildwheel"]["linux"]["manylinux-x86_64-image"] == (
+        "mlnative-manylinux:latest"
+    )
+    assert "ci-build-wheels" in justfile
+    assert "build-cibw-image" in justfile
+    assert "ci-build-wheel <platform>" not in justfile
+    assert "just ci-build-wheels" in release
+    assert "Root-Is-Purelib: false" in helper
+    assert "Tag: py3-none-{platform_tag}" in helper
+    assert "openssl-devel" in dockerfile
+    assert "libpng-devel" in dockerfile
+
+
+def test_agents_guidance_moved_to_contributing():
+    """Developer guidance should live in CONTRIBUTING, not AGENTS.md."""
+    contributing = (ROOT / "CONTRIBUTING.md").read_text()
+    readme = (ROOT / "README.md").read_text()
+
+    assert not (ROOT / "AGENTS.md").exists()
+    assert "CI should orchestrate" in contributing
+    assert "just check" in contributing
+    assert "CONTRIBUTING.md" in readme
+
+
+def test_rust_renderer_uses_camera_update_api():
+    """Renderer should use the maplibre_native 0.8 camera API."""
+    source = (ROOT / "rust/src/main.rs").read_text()
+
+    assert "CameraUpdate" in source
+    assert "LatLng" in source
+    assert "renderer.render_static(&camera)?" in source
+    assert "render_static(center[1]" not in source
 
 
 def test_release_workflow_attest_action_is_digest_pinned():

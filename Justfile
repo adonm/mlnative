@@ -17,7 +17,7 @@ ci-setup:
 
 # Build Rust native binary
 build-rust:
-    cd rust && cargo build --release
+    cd rust && cargo build --release --locked
 
 # Run all tests
 test:
@@ -37,19 +37,19 @@ test-unit:
 
 # Run linting
 lint:
-    uv run ruff check mlnative/ tests/ examples/
+    uv run ruff check mlnative/ tests/ examples/ scripts/
 
 # Run linting with auto-fix
 lint-fix:
-    uv run ruff check mlnative/ tests/ examples/ --fix
+    uv run ruff check mlnative/ tests/ examples/ scripts/ --fix
 
 # Format code
 format:
-    uv run ruff format mlnative/ tests/ examples/
+    uv run ruff format mlnative/ tests/ examples/ scripts/
 
 # Check formatting (CI)
 format-check:
-    uv run ruff format mlnative/ tests/ examples/ --check
+    uv run ruff format mlnative/ tests/ examples/ scripts/ --check
 
 # Run type checking
 typecheck:
@@ -62,9 +62,23 @@ check: lint format-check typecheck test-unit
 build:
     uv build
 
+# Build the local manylinux image used by cibuildwheel
+build-cibw-image:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "$(uname -m)" in
+        x86_64) base_image="quay.io/pypa/manylinux_2_28_x86_64" ;;
+        aarch64|arm64) base_image="quay.io/pypa/manylinux_2_28_aarch64" ;;
+        *) echo "Unsupported cibuildwheel host architecture: $(uname -m)" >&2; exit 1 ;;
+    esac
+    docker build \
+        --build-arg BASE_IMAGE="${base_image}" \
+        -t mlnative-manylinux:latest \
+        -f docker/cibuildwheel-manylinux.Dockerfile .
+
 # Build wheels for all platforms (requires Docker)
-build-wheels:
-    uv run cibuildwheel --platform linux
+build-wheels: build-cibw-image
+    uv run cibuildwheel --platform linux --output-dir wheelhouse
 
 # Clean build artifacts
 clean:
@@ -80,7 +94,7 @@ ci-build-binary PLATFORM:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "Building binary for {{PLATFORM}}..."
-    cd rust && cargo build --release
+    cd rust && cargo build --release --locked
     mkdir -p ../mlnative/bin
     if [[ "{{PLATFORM}}" == win32-* ]]; then
         cp target/release/mlnative-render.exe ../mlnative/bin/mlnative-render-{{PLATFORM}}.exe
@@ -90,33 +104,9 @@ ci-build-binary PLATFORM:
     fi
     echo "✓ Binary built: mlnative/bin/mlnative-render-{{PLATFORM}}"
 
-# CI: Build platform wheel with binary
-# Usage: just ci-build-wheel <platform>
-ci-build-wheel PLATFORM:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    echo "Building wheel for {{PLATFORM}}..."
-    uv pip install build
-    uv run python -m build --wheel
-    # Rename wheel with correct platform tag
-    python3 << EOF
-    import os
-    import glob
-    
-    platform_map = {
-        "linux-x64": "manylinux_2_28_x86_64",
-        "linux-arm64": "manylinux_2_28_aarch64",
-        "darwin-x64": "macosx_10_12_x86_64",
-        "darwin-arm64": "macosx_11_0_arm64",
-        "win32-x64": "win_amd64"
-    }
-    tag = platform_map.get("{{PLATFORM}}", "any")
-    
-    for wheel in glob.glob("dist/*.whl"):
-        new_name = wheel.replace("-any.whl", f"-{tag}.whl")
-        os.rename(wheel, new_name)
-        print(f"Created: {new_name}")
-    EOF
+# CI: Build platform wheels with cibuildwheel
+ci-build-wheels: build-cibw-image
+    uv run cibuildwheel --platform linux --output-dir dist
 
 # CI: Build source distribution
 ci-build-sdist:

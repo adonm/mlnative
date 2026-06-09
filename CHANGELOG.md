@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Updated Rust dependencies, including `maplibre_native` 0.8.2, and moved the renderer to the `CameraUpdate` API.
+- Replaced release wheel filename rewriting with a `cibuildwheel` build and repair flow.
+- Moved developer guidance from `AGENTS.md` into `CONTRIBUTING.md` and removed `AGENTS.md`.
 - Extracted shared render/style validation helpers in `Map` to reduce duplicated input handling.
 - Tightened GeoJSON helper validation for coordinate ranges and common wrong input shapes.
 - Updated example servers to use a style allowlist instead of arbitrary request-provided URLs or paths.

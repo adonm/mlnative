@@ -31,6 +31,11 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
+      - name: Install system dependencies (Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake libcurl4-openssl-dev libicu-dev libjpeg-dev libpng-dev libssl-dev libuv1-dev libwebp-dev pkg-config zlib1g-dev
+
       - name: Setup Rust cache
         uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
         with:
@@ -111,7 +116,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libcurl4-openssl-dev pkg-config
+          sudo apt-get install -y cmake libcurl4-openssl-dev libicu-dev libjpeg-dev libpng-dev libssl-dev libuv1-dev libwebp-dev pkg-config zlib1g-dev
 
       - name: Setup Rust cache
         uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2

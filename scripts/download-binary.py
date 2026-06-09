@@ -13,7 +13,7 @@ def get_platform():
     """Get platform identifier for binary download."""
     system = platform.system().lower()
     machine = platform.machine().lower()
-    
+
     # Normalize platform names
     if system == "darwin":
         system = "darwin"
@@ -21,7 +21,7 @@ def get_platform():
         system = "linux"
     elif system == "windows":
         system = "win32"
-    
+
     # Normalize architecture
     if machine in ("arm64", "aarch64"):
         arch = "arm64"
@@ -29,7 +29,7 @@ def get_platform():
         arch = "x64"
     else:
         raise RuntimeError(f"Unsupported architecture: {machine}")
-    
+
     return f"{system}-{arch}"
 
 

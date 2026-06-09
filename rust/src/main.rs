@@ -1,4 +1,6 @@
-use maplibre_native::{Image, ImageRenderer, ImageRendererBuilder, RenderingError, Static};
+use maplibre_native::{
+    CameraUpdate, Image, ImageRenderer, ImageRendererBuilder, LatLng, RenderingError, Static,
+};
 use serde::{Deserialize, Serialize};
 use std::io::{self, BufRead, Seek, SeekFrom, Write};
 use std::num::NonZeroU32;
@@ -138,7 +140,16 @@ impl Renderer {
             .as_mut()
             .ok_or(RenderingError::StyleNotSpecified)?;
 
-        let image = renderer.render_static(center[1], center[0], zoom, bearing, pitch)?;
+        let camera = CameraUpdate::new()
+            .center(LatLng {
+                lat: center[1],
+                lng: center[0],
+            })
+            .zoom(zoom)
+            .bearing(bearing)
+            .pitch(pitch);
+
+        let image = renderer.render_static(&camera)?;
 
         Ok(image)
     }

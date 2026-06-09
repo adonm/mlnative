@@ -63,26 +63,24 @@ Error:
 
 ### Prerequisites
 
-- Rust toolchain (1.70+)
+- Rust toolchain pinned in `.mise.toml`
 - CMake (for building)
+- libcurl, OpenSSL, libjpeg, libpng, WebP, ICU, libuv, and zlib development headers plus pkg-config on Linux
 
 ### Build
 
 ```bash
 cd rust
-cargo build --release
+cargo build --release --locked
 ```
 
 The binary will be at `target/release/mlnative-render`.
 
 ### Cross-compilation
 
-The CI builds for multiple platforms:
+The CI currently builds Linux wheels for:
 - Linux x64 (x86_64-unknown-linux-gnu)
 - Linux ARM64 (aarch64-unknown-linux-gnu)
-- macOS x64 (x86_64-apple-darwin)
-- macOS ARM64 (aarch64-apple-darwin)
-- Windows x64 (x86_64-pc-windows-msvc)
 
 ## Dependencies
 
