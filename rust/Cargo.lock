@@ -1314,7 +1314,7 @@ dependencies = [
 
 [[package]]
 name = "mlnative-render"
-version = "0.3.10"
+version = "0.3.11"
 dependencies = [
  "image",
  "maplibre_native",
