@@ -27,8 +27,10 @@ just lint
 just lint-fix
 just format
 just typecheck
+just doctor
 just build-rust
 just build
+just smoke
 just build-wheels
 just test-docker
 ```
@@ -40,6 +42,8 @@ just test-docker
 - Use modern Python typing: `dict[str, Any]`, `str | None`, and typed function signatures.
 - Let ruff sort imports and format code; line length is 100.
 - Keep public docs concise and add tests for behavior changes.
+- Use `typing.Annotated` for FastAPI parameter validation in examples.
+- Prefer public type aliases such as `Center`, `Bounds`, and `RenderView` when documenting user-facing shapes.
 
 ## Rust renderer
 
@@ -59,6 +63,8 @@ just build-rust
 
 The built binary is copied into `mlnative/bin/` by CI/build recipes using the platform name
 expected by `mlnative._bridge.get_binary_path()`.
+Use `python -m mlnative doctor` to inspect binary discovery, and `python -m mlnative doctor --render`
+after building a local binary to smoke-check the renderer without remote tiles.
 
 ## Wheels and releases
 
@@ -99,6 +105,7 @@ and OpenFreeMap availability. Unit tests skip integration coverage with `-m "not
 Common issues:
 
 - **Permission denied on binary**: `_bridge.py` attempts to restore executable permissions.
+- **Installation uncertainty**: run `python -m mlnative doctor`; add `--render` for a local renderer smoke check.
 - **Missing `libcurl` at build time**: install the platform's libcurl development package or build via `just build-wheels`.
 - **Renderer exits immediately**: install Vulkan/runtime graphics libraries.
 - **Network timeouts**: verify outbound HTTPS access to style/tile services or raise `MLNATIVE_TIMEOUT`.

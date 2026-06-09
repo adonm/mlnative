@@ -7,9 +7,10 @@ plus generate actual map images with various options including 2x/highdpi.
 """
 
 import logging
+from typing import Annotated
 
 import uvicorn
-from fastapi import FastAPI, Form, Request
+from fastapi import FastAPI, Form, Query, Request
 from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 from style_catalog import DEFAULT_STYLE_ID, STYLES, resolve_style
@@ -43,15 +44,15 @@ def index(request: Request):
 @app.post("/preview", response_class=HTMLResponse)
 def preview(
     request: Request,
-    lon: float = Form(-122.4194),
-    lat: float = Form(37.7749),
-    zoom: float = Form(12),
-    width: int = Form(512),
-    height: int = Form(512),
-    style: str = Form(DEFAULT_STYLE_ID),
-    bearing: float = Form(0),
-    pitch: float = Form(0),
-    highdpi: bool = Form(False),
+    lon: Annotated[float, Form(ge=-180, le=180)] = -122.4194,
+    lat: Annotated[float, Form(ge=-90, le=90)] = 37.7749,
+    zoom: Annotated[float, Form(ge=0, le=22)] = 12,
+    width: Annotated[int, Form(gt=0, le=2048)] = 512,
+    height: Annotated[int, Form(gt=0, le=2048)] = 512,
+    style: Annotated[str, Form()] = DEFAULT_STYLE_ID,
+    bearing: Annotated[float, Form(ge=0, le=360)] = 0,
+    pitch: Annotated[float, Form(ge=0, le=60)] = 0,
+    highdpi: Annotated[bool, Form()] = False,
 ):
     """Show the Python code and generate preview."""
     pixel_ratio = 2.0 if highdpi else 1.0
@@ -115,15 +116,15 @@ with open("map.png", "wb") as f:
 
 @app.get("/map.png")
 def generate_map(
-    lon: float,
-    lat: float,
-    zoom: float,
-    width: int = 512,
-    height: int = 512,
-    style: str = DEFAULT_STYLE_ID,
-    bearing: float = 0,
-    pitch: float = 0,
-    highdpi: bool = False,
+    lon: Annotated[float, Query(ge=-180, le=180)],
+    lat: Annotated[float, Query(ge=-90, le=90)],
+    zoom: Annotated[float, Query(ge=0, le=22)],
+    width: Annotated[int, Query(gt=0, le=2048)] = 512,
+    height: Annotated[int, Query(gt=0, le=2048)] = 512,
+    style: Annotated[str, Query()] = DEFAULT_STYLE_ID,
+    bearing: Annotated[float, Query(ge=0, le=360)] = 0,
+    pitch: Annotated[float, Query(ge=0, le=60)] = 0,
+    highdpi: Annotated[bool, Query()] = False,
 ):
     """Generate map image from query parameters."""
     pixel_ratio = 2.0 if highdpi else 1.0

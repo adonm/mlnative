@@ -11,6 +11,8 @@ except ImportError as e:
         "Install the optional geo extra to run this example: pip install 'mlnative[geo]'"
     ) from e
 
+from pathlib import Path
+
 from mlnative import Map
 
 # Geocode location for screenshots
@@ -36,9 +38,8 @@ def generate_style_comparison():
             m.load_style(style_url)
             png = m.render(center=center, zoom=zoom)
 
-            filename = f"docs/images/style-{style_name}.png"
-            with open(filename, "wb") as f:
-                f.write(png)
+            filename = Path(f"docs/images/style-{style_name}.png")
+            filename.write_bytes(png)
             print(f"  Generated: {filename} ({description})")
 
 
@@ -49,17 +50,15 @@ def generate_pixel_ratio_comparison():
     # Generate at 1x (standard)
     with Map(width, height, pixel_ratio=1) as m:
         png = m.render(center=center, zoom=zoom)
-        filename = "docs/images/pixelratio-1x.png"
-        with open(filename, "wb") as f:
-            f.write(png)
+        filename = Path("docs/images/pixelratio-1x.png")
+        filename.write_bytes(png)
         print(f"  Generated: {filename} (1x standard)")
 
     # Generate at 2x (HiDPI/Retina)
     with Map(width, height, pixel_ratio=2) as m:
         png = m.render(center=center, zoom=zoom)
-        filename = "docs/images/pixelratio-2x.png"
-        with open(filename, "wb") as f:
-            f.write(png)
+        filename = Path("docs/images/pixelratio-2x.png")
+        filename.write_bytes(png)
         print(f"  Generated: {filename} (2x HiDPI)")
 
     print("\nNote: Both images show the same geographic area.")

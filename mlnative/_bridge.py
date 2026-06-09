@@ -94,7 +94,7 @@ def get_binary_path() -> Path:
     if binary_path.exists():
         # Ensure binary is executable (permissions may be stripped in wheels)
         if sys.platform != "win32" and not os.access(binary_path, os.X_OK):
-            os.chmod(binary_path, 0o755)
+            binary_path.chmod(0o755)
         return binary_path
 
     # Check PATH only when explicitly enabled.

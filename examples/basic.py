@@ -12,6 +12,8 @@ except ImportError as e:
         "Install the optional geo extra to run this example: pip install 'mlnative[geo]'"
     ) from e
 
+from pathlib import Path
+
 from mlnative import Map
 
 
@@ -29,9 +31,8 @@ def main():
             zoom=12,
         )
 
-        output_path = "san_francisco.png"
-        with open(output_path, "wb") as f:
-            f.write(png_bytes)
+        output_path = Path("san_francisco.png")
+        output_path.write_bytes(png_bytes)
         print(f"   Saved to {output_path} ({len(png_bytes)} bytes)")
 
     # Example 2: With rotation and tilt
@@ -46,9 +47,8 @@ def main():
             pitch=30,  # Tilt 30 degrees
         )
 
-        output_path = "new_york.png"
-        with open(output_path, "wb") as f:
-            f.write(png_bytes)
+        output_path = Path("new_york.png")
+        output_path.write_bytes(png_bytes)
         print(f"   Saved to {output_path} ({len(png_bytes)} bytes)")
 
     # Example 3: HiDPI / Retina rendering
@@ -61,9 +61,8 @@ def main():
             zoom=15,
         )
 
-        output_path = "sydney_hidpi.png"
-        with open(output_path, "wb") as f:
-            f.write(png_bytes)
+        output_path = Path("sydney_hidpi.png")
+        output_path.write_bytes(png_bytes)
         print(f"   Saved to {output_path} ({len(png_bytes)} bytes)")
         print("   Image is 1024x1024 pixels - sharp on retina displays")
 

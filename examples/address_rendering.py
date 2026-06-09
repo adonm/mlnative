@@ -11,6 +11,8 @@ except ImportError as e:
         "Install the optional geo extra to run this example: pip install 'mlnative[geo]'"
     ) from e
 
+from pathlib import Path
+
 from mlnative import Map
 
 
@@ -37,9 +39,8 @@ if __name__ == "__main__":
     print("Rendering map of Sydney Opera House...")
     png, location = render_address("Sydney Opera House, Australia", zoom=15)
 
-    output_path = "sydney_opera_house.png"
-    with open(output_path, "wb") as f:
-        f.write(png)
+    output_path = Path("sydney_opera_house.png")
+    output_path.write_bytes(png)
 
     print(f"Saved to {output_path}")
     print(f"Location: {location.latitude}, {location.longitude}")
@@ -55,9 +56,8 @@ if __name__ == "__main__":
     for landmark in landmarks:
         try:
             png, loc = render_address(landmark, zoom=14)
-            filename = landmark.lower().replace(", ", "_").replace(" ", "_") + ".png"
-            with open(filename, "wb") as f:
-                f.write(png)
+            filename = Path(landmark.lower().replace(", ", "_").replace(" ", "_") + ".png")
+            filename.write_bytes(png)
             print(f"  {landmark}: {filename}")
         except Exception as e:
             print(f"  {landmark}: Error - {e}")

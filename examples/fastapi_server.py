@@ -12,9 +12,10 @@ Query parameters:
 """
 
 import logging
+from typing import Annotated
 
 import uvicorn
-from fastapi import FastAPI, Query, Response
+from fastapi import FastAPI, Path, Query, Response
 from fastapi.responses import JSONResponse
 from style_catalog import DEFAULT_STYLE_ID, STYLES, resolve_style
 
@@ -39,14 +40,14 @@ def root():
 
 @app.get("/static/{lon},{lat},{zoom}/{width}x{height}.png")
 def static_map(
-    lon: float,
-    lat: float,
-    zoom: float,
-    width: int,
-    height: int,
-    bearing: float = Query(0, ge=0, le=360),
-    pitch: float = Query(0, ge=0, le=60),
-    style: str = Query(DEFAULT_STYLE_ID),
+    lon: Annotated[float, Path(ge=-180, le=180, description="Longitude")],
+    lat: Annotated[float, Path(ge=-90, le=90, description="Latitude")],
+    zoom: Annotated[float, Path(ge=0, le=22, description="Zoom level")],
+    width: Annotated[int, Path(gt=0, le=2048, description="Image width in pixels")],
+    height: Annotated[int, Path(gt=0, le=2048, description="Image height in pixels")],
+    bearing: Annotated[float, Query(ge=0, le=360, description="Rotation in degrees")] = 0,
+    pitch: Annotated[float, Query(ge=0, le=60, description="Tilt in degrees")] = 0,
+    style: Annotated[str, Query(description="Style ID from the allowlist")] = DEFAULT_STYLE_ID,
 ):
     """
     Generate a static map image.
@@ -61,15 +62,6 @@ def static_map(
     - pitch: Tilt in degrees (0-60)
     - style: Map style ID: liberty, positron, or dark
     """
-    # Validate dimensions
-    if width > 2048 or height > 2048:
-        return JSONResponse(
-            status_code=400, content={"error": "Dimensions too large (max 2048x2048)"}
-        )
-
-    if width <= 0 or height <= 0:
-        return JSONResponse(status_code=400, content={"error": "Dimensions must be positive"})
-
     try:
         style_url = resolve_style(style)
     except MlnativeError as e:

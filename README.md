@@ -16,6 +16,14 @@ Uses the [maplibre-native](https://crates.io/crates/maplibre-native) Rust crate 
 pip install mlnative
 ```
 
+Check the local install and native renderer binary:
+
+```bash
+python -m mlnative doctor
+# Optional full renderer check, no network tiles required:
+python -m mlnative doctor --render
+```
+
 ```python
 from mlnative import Map
 
@@ -167,12 +175,14 @@ Create map renderer. Context manager ensures cleanup.
 - `pixel_ratio`: Scale factor for HiDPI (1=normal, 2=retina, 3=ultra-HD)
   - Output image dimensions will be `width × pixel_ratio` by `height × pixel_ratio`
   - Geographic coverage remains the same regardless of pixel_ratio
+- `timeout`: Optional renderer command timeout in seconds. Defaults to `MLNATIVE_TIMEOUT` or 30.
 
 ### render(center, zoom, bearing=0, pitch=0)
 
 Render single view. Returns PNG bytes.
 
 - `center`: `[longitude, latitude]`
+- Center can be a list or tuple of two finite numbers.
 - `zoom`: 0-24
 - `bearing`: Rotation in degrees (0-360)
 - `pitch`: Tilt in degrees (0-85)
@@ -195,6 +205,7 @@ views = [
 ### fit_bounds(bounds, padding=0, max_zoom=24)
 
 Calculate center/zoom to fit bounding box. Bounds must stay within Web Mercator latitude limits (about ±85.0511°).
+Bounds can be a list or tuple: `(xmin, ymin, xmax, ymax)`.
 
 ```python
 center, zoom = m.fit_bounds((xmin, ymin, xmax, ymax))
@@ -269,6 +280,7 @@ The `pixel_ratio` parameter controls the resolution of the output image:
 
 ### Troubleshooting
 
+- Start with `python -m mlnative doctor`; add `--render` for a local renderer smoke check.
 - **Native renderer binary not found**: install a platform wheel or run `just build-rust` for source builds. PATH lookup is disabled unless `MLNATIVE_USE_SYSTEM_BINARY=1` is set.
 - **Protocol version mismatch**: rebuild the Rust renderer with `just build-rust`; the Python package and binary are out of sync.
 - **Timeout waiting for renderer**: increase `MLNATIVE_TIMEOUT` for slow tile/style services. A timed-out renderer is stopped; create a new `Map` to retry.

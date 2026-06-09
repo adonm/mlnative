@@ -14,16 +14,18 @@ from .geo import (
     from_latlng,
     point,
 )
-from .map import Map
+from .map import Bounds, Center, Map, RenderView
 
 __version__ = version("mlnative")
 __all__ = [
+    "Bounds",
+    "Center",
     "Map",
     "MlnativeError",
-    # GeoJSON helpers
-    "point",
+    "RenderView",
+    "bounds_to_polygon",
     "feature_collection",
     "from_coordinates",
     "from_latlng",
-    "bounds_to_polygon",
+    "point",
 ]

@@ -7,7 +7,7 @@ from shapely import Point
 
 from mlnative import Map
 from mlnative.exceptions import MlnativeError
-from mlnative.map import _normalize_style_input, _normalize_view
+from mlnative.map import _normalize_center, _normalize_style_input, _normalize_view
 
 
 class TestFitBounds:
@@ -90,10 +90,23 @@ class TestFitBounds:
         """Test single point with custom max_zoom."""
         m = Map(width=512, height=512)
         bounds = (115.85542, -31.95415, 115.85542, -31.95415)
-        center, zoom = m.fit_bounds(bounds, max_zoom=10)
+        _center, zoom = m.fit_bounds(bounds, max_zoom=10)
 
         # Should respect the max_zoom limit
         assert zoom <= 10.0
+
+    def test_fit_bounds_accepts_list(self):
+        """Bounds input accepts common list shapes from JSON/request parsing."""
+        m = Map(width=512, height=512)
+        center, zoom = m.fit_bounds([-122.5, 37.7, -122.3, 37.9])
+        assert center == pytest.approx([-122.4, 37.8])
+        assert zoom > 0
+
+    def test_fit_bounds_rejects_negative_padding(self):
+        """Negative padding is almost always a caller bug."""
+        m = Map(width=512, height=512)
+        with pytest.raises(MlnativeError, match="Padding"):
+            m.fit_bounds((-122.5, 37.7, -122.3, 37.9), padding=-1)
 
 
 class TestSetGeojson:
@@ -187,10 +200,24 @@ class TestSetGeojson:
 class TestValidationHelpers:
     """Tests for shared render/style validation helpers."""
 
+    def test_normalize_center_accepts_tuple(self):
+        """Center input accepts tuple ergonomically while returning renderer lists."""
+        assert _normalize_center((-122.4, 37.8)) == [-122.4, 37.8]
+
+    def test_normalize_center_rejects_nan(self):
+        """Non-finite coordinates should fail before renderer calls."""
+        with pytest.raises(MlnativeError, match="finite"):
+            _normalize_center([float("nan"), 0])
+
     def test_normalize_view_normalizes_bearing(self):
         """Bearing wraps to the renderer's 0-360 range."""
         view = _normalize_view([0, 0], 1, bearing=725, pitch=0, label="View")
         assert view["bearing"] == 5
+
+    def test_normalize_view_accepts_numeric_strings(self):
+        """Human inputs from forms can be normalized before rendering."""
+        view = _normalize_view(("1", "2"), "3", bearing="4", pitch="5")
+        assert view == {"center": [1.0, 2.0], "zoom": 3.0, "bearing": 4.0, "pitch": 5.0}
 
     def test_normalize_view_rejects_bad_center_shape(self):
         """Bad center input should fail with a clear message."""

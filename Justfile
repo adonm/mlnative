@@ -55,6 +55,14 @@ format-check:
 typecheck:
     uv run mypy mlnative/
 
+# Check packaged runtime wiring without starting renderer
+doctor:
+    uv run python -m mlnative doctor
+
+# Smoke-check native renderer with a local empty style
+smoke:
+    uv run python -m mlnative doctor --render
+
 # Run all quality checks (CI)
 check: lint format-check typecheck test-unit
 

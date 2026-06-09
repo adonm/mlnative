@@ -199,7 +199,8 @@ def test_example_servers_use_style_allowlist():
     assert "resolve_style(style)" in fastapi_source
     assert "resolve_style(style)" in web_source
     assert "STYLES =" in catalog_source
-    assert "style: str = Query(DEFAULT_STYLE_ID)" in fastapi_source
+    assert "style: Annotated[str, Query(" in fastapi_source
+    assert "= DEFAULT_STYLE_ID" in fastapi_source
 
 
 def test_set_geojson_reloads_updated_style_for_running_daemon(simple_style, simple_geojson):

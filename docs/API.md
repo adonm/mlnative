@@ -6,6 +6,13 @@
 pip install mlnative
 ```
 
+Check your install:
+
+```bash
+python -m mlnative doctor
+python -m mlnative doctor --render
+```
+
 ## Quick Start
 
 ```python
@@ -28,7 +35,7 @@ Main class for rendering static maps using MapLibre GL Native.
 #### Constructor
 
 ```python
-Map(width: int, height: int, pixel_ratio: float = 1.0)
+Map(width: int, height: int, pixel_ratio: float = 1.0, timeout: float | None = None)
 ```
 
 **Parameters:**
@@ -38,6 +45,7 @@ Map(width: int, height: int, pixel_ratio: float = 1.0)
 | `width` | `int` | required | Image width in pixels (1-4096) |
 | `height` | `int` | required | Image height in pixels (1-4096) |
 | `pixel_ratio` | `float` | `1.0` | Pixel ratio for high-DPI (0 < x <= 4) |
+| `timeout` | `float | None` | `None` | Renderer command timeout in seconds. Defaults to `MLNATIVE_TIMEOUT` or 30. |
 
 **Raises:**
 
@@ -80,7 +88,7 @@ Render the map to PNG bytes.
 
 ```python
 render(
-    center: list[float],
+    center: Sequence[float],
     zoom: float,
     bearing: float = 0,
     pitch: float = 0
@@ -91,7 +99,7 @@ render(
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `center` | `[lon, lat]` | required | Map center coordinates |
+| `center` | `[lon, lat]` | required | Map center coordinates as a list or tuple of two finite numbers |
 | `zoom` | `float` | required | Zoom level (0-24) |
 | `bearing` | `float` | `0` | Rotation in degrees (normalized to 0-360) |
 | `pitch` | `float` | `0` | Tilt in degrees (0-85) |
@@ -147,7 +155,7 @@ Calculate center and zoom to fit geographic bounds.
 
 ```python
 fit_bounds(
-    bounds: tuple[float, float, float, float],
+    bounds: Sequence[float],
     padding: int = 0,
     max_zoom: float = 24
 ) -> tuple[list[float], float]
@@ -157,7 +165,7 @@ fit_bounds(
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `bounds` | `(xmin, ymin, xmax, ymax)` | required | Bounding box in degrees |
+| `bounds` | `(xmin, ymin, xmax, ymax)` | required | Bounding box in degrees as a list or tuple |
 | `padding` | `int` | `0` | Padding in pixels |
 | `max_zoom` | `float` | `24` | Maximum zoom level |
 
@@ -264,6 +272,22 @@ from mlnative.geo import from_latlng
 
 fc = from_latlng([(37.8, -122.4), (40.7, -74.0)])  # GPS order
 ```
+
+## CLI diagnostics
+
+Run installation checks with:
+
+```bash
+python -m mlnative doctor
+```
+
+Use `--render` to start the native renderer and render a tiny local-style PNG without remote tile access:
+
+```bash
+python -m mlnative doctor --render
+```
+
+The packaged wheel should find `mlnative/bin/mlnative-render-<platform>-<arch>`. PATH lookup is disabled unless `MLNATIVE_USE_SYSTEM_BINARY=1` is set.
 
 ---
 

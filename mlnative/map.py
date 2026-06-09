@@ -7,6 +7,7 @@ Provides synchronous API for static map rendering.
 
 import json
 import math
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -27,6 +28,10 @@ WEB_MERCATOR_MAX_LAT = 85.05112878
 MAX_BATCH_OUTPUT_PIXELS = 64_000_000
 MAX_STYLE_JSON_BYTES = 5_000_000
 
+type Center = Sequence[float]
+type Bounds = Sequence[float]
+type RenderView = dict[str, Any]
+
 
 def _validate_dimension(width: int, height: int) -> None:
     """Validate logical map dimensions."""
@@ -43,12 +48,25 @@ def _validate_pixel_ratio(pixel_ratio: float) -> None:
         raise MlnativeError(f"pixel_ratio must be between 0 and 4 (exclusive), got {pixel_ratio}")
 
 
-def _normalize_center(center: list[float], label: str = "Center") -> list[float]:
+def _normalize_center(center: Center, label: str = "Center") -> list[float]:
     """Validate and return a [longitude, latitude] center."""
-    if not isinstance(center, list) or len(center) != 2:
-        raise MlnativeError(f"{label} must be [longitude, latitude], got {center}")
+    if isinstance(center, (str, bytes)):
+        raise MlnativeError(f"{label} must be [longitude, latitude], got {center!r}")
 
-    lon, lat = center
+    try:
+        lon_raw, lat_raw = center
+    except (TypeError, ValueError) as e:
+        raise MlnativeError(f"{label} must be [longitude, latitude], got {center}") from e
+
+    try:
+        lon = float(lon_raw)
+        lat = float(lat_raw)
+    except (TypeError, ValueError) as e:
+        raise MlnativeError(f"{label} coordinates must be numbers, got {center}") from e
+
+    if not (math.isfinite(lon) and math.isfinite(lat)):
+        raise MlnativeError(f"{label} coordinates must be finite numbers, got {center}")
+
     if not (-180 <= lon <= 180):
         raise MlnativeError(f"{label} longitude must be -180 to 180, got {lon}")
     if not (-90 <= lat <= 90):
@@ -58,14 +76,24 @@ def _normalize_center(center: list[float], label: str = "Center") -> list[float]
 
 
 def _normalize_view(
-    center: list[float],
+    center: Center,
     zoom: float,
     bearing: float = 0,
     pitch: float = 0,
     label: str = "View",
-) -> dict[str, Any]:
+) -> RenderView:
     """Validate and normalize render view parameters."""
     normalized_center = _normalize_center(center, label)
+
+    try:
+        zoom = float(zoom)
+        bearing = float(bearing)
+        pitch = float(pitch)
+    except (TypeError, ValueError) as e:
+        raise MlnativeError(f"{label} zoom, bearing, and pitch must be numbers") from e
+
+    if not (math.isfinite(zoom) and math.isfinite(bearing) and math.isfinite(pitch)):
+        raise MlnativeError(f"{label} zoom, bearing, and pitch must be finite numbers")
 
     if not (0 <= zoom <= MAX_ZOOM):
         raise MlnativeError(f"{label} zoom must be 0-{MAX_ZOOM}, got {zoom}")
@@ -81,12 +109,52 @@ def _normalize_view(
     }
 
 
+def _normalize_bounds(bounds: Bounds) -> tuple[float, float, float, float]:
+    """Validate and return a numeric (xmin, ymin, xmax, ymax) tuple."""
+    if isinstance(bounds, (str, bytes)):
+        raise MlnativeError(f"Bounds must be (xmin, ymin, xmax, ymax), got {bounds!r}")
+
+    try:
+        xmin_raw, ymin_raw, xmax_raw, ymax_raw = bounds
+    except (TypeError, ValueError) as e:
+        raise MlnativeError(f"Bounds must be (xmin, ymin, xmax, ymax), got {bounds}") from e
+
+    try:
+        xmin = float(xmin_raw)
+        ymin = float(ymin_raw)
+        xmax = float(xmax_raw)
+        ymax = float(ymax_raw)
+    except (TypeError, ValueError) as e:
+        raise MlnativeError(f"Bounds values must be numbers, got {bounds}") from e
+
+    if not all(math.isfinite(value) for value in (xmin, ymin, xmax, ymax)):
+        raise MlnativeError(f"Bounds values must be finite numbers, got {bounds}")
+
+    if not (-180 <= xmin <= 180 and -180 <= xmax <= 180):
+        raise MlnativeError(f"Longitude must be -180 to 180, got {bounds}")
+    if not (-90 <= ymin <= 90 and -90 <= ymax <= 90):
+        raise MlnativeError(f"Latitude must be -90 to 90, got {bounds}")
+    if not (
+        -WEB_MERCATOR_MAX_LAT <= ymin <= WEB_MERCATOR_MAX_LAT
+        and -WEB_MERCATOR_MAX_LAT <= ymax <= WEB_MERCATOR_MAX_LAT
+    ):
+        raise MlnativeError(
+            f"Latitude must be within Web Mercator bounds (±{WEB_MERCATOR_MAX_LAT}), got {bounds}"
+        )
+    if xmin > xmax:
+        raise MlnativeError(f"xmin must be <= xmax, got {bounds}")
+    if ymin > ymax:
+        raise MlnativeError(f"ymin must be <= ymax, got {bounds}")
+
+    return xmin, ymin, xmax, ymax
+
+
 def _load_style_file(path: Path) -> dict[str, Any]:
     """Load style JSON from a local file path."""
     if not path.exists():
         raise MlnativeError(f"Style file not found: {path}")
     try:
-        with open(path) as f:
+        with path.open() as f:
             style = json.load(f)
     except json.JSONDecodeError as e:
         raise MlnativeError(f"Invalid JSON in style file: {e}") from e
@@ -152,7 +220,8 @@ class Map:
         width: int,
         height: int,
         pixel_ratio: float = 1.0,
-    ):
+        timeout: float | None = None,
+    ) -> None:
         """
         Create a new map renderer.
 
@@ -160,6 +229,7 @@ class Map:
             width: Image width in pixels (1-4096)
             height: Image height in pixels (1-4096)
             pixel_ratio: Pixel ratio for high-DPI rendering (default 1.0, max 4.0)
+            timeout: Renderer command timeout in seconds. Defaults to MLNATIVE_TIMEOUT or 30.
         """
         _validate_dimension(width, height)
         _validate_pixel_ratio(pixel_ratio)
@@ -167,6 +237,7 @@ class Map:
         self.width = width
         self.height = height
         self.pixel_ratio = pixel_ratio
+        self.timeout = timeout
         self._style: str | dict[str, Any] | None = None
         self._daemon: RenderDaemon | None = None
         self._closed = False
@@ -174,7 +245,7 @@ class Map:
     def _get_daemon(self) -> RenderDaemon:
         """Get or create the render daemon."""
         if self._daemon is None:
-            self._daemon = RenderDaemon()
+            self._daemon = RenderDaemon(timeout=self.timeout)
             self._daemon.start(
                 self.width,
                 self.height,
@@ -202,9 +273,7 @@ class Map:
         if self._daemon is not None:
             self._daemon.reload_style(_serialize_style(self._style))
 
-    def render(
-        self, center: list[float], zoom: float, bearing: float = 0, pitch: float = 0
-    ) -> bytes:
+    def render(self, center: Center, zoom: float, bearing: float = 0, pitch: float = 0) -> bytes:
         """
         Render the map to PNG bytes.
 
@@ -235,7 +304,7 @@ class Map:
         except Exception as e:
             raise MlnativeError(f"Render failed: {e}") from e
 
-    def render_batch(self, views: list[dict[str, Any]]) -> list[bytes]:
+    def render_batch(self, views: list[RenderView]) -> list[bytes]:
         """
         Render multiple map views efficiently.
 
@@ -313,7 +382,7 @@ class Map:
 
     def fit_bounds(
         self,
-        bounds: tuple[float, float, float, float],
+        bounds: Bounds,
         padding: int = 0,
         max_zoom: float = MAX_ZOOM,
     ) -> tuple[list[float], float]:
@@ -345,25 +414,12 @@ class Map:
         if self._closed:
             raise MlnativeError("Map has been closed")
 
-        xmin, ymin, xmax, ymax = bounds
+        xmin, ymin, xmax, ymax = _normalize_bounds(bounds)
 
-        # Validate bounds
-        if not (-180 <= xmin <= 180 and -180 <= xmax <= 180):
-            raise MlnativeError(f"Longitude must be -180 to 180, got {bounds}")
-        if not (-90 <= ymin <= 90 and -90 <= ymax <= 90):
-            raise MlnativeError(f"Latitude must be -90 to 90, got {bounds}")
-        if not (
-            -WEB_MERCATOR_MAX_LAT <= ymin <= WEB_MERCATOR_MAX_LAT
-            and -WEB_MERCATOR_MAX_LAT <= ymax <= WEB_MERCATOR_MAX_LAT
-        ):
-            raise MlnativeError(
-                "Latitude must be within Web Mercator bounds "
-                f"(±{WEB_MERCATOR_MAX_LAT}), got {bounds}"
-            )
-        if xmin > xmax:
-            raise MlnativeError(f"xmin must be <= xmax, got {bounds}")
-        if ymin > ymax:
-            raise MlnativeError(f"ymin must be <= ymax, got {bounds}")
+        if padding < 0:
+            raise MlnativeError(f"Padding must be non-negative, got {padding}")
+        if not (0 <= max_zoom <= MAX_ZOOM):
+            raise MlnativeError(f"max_zoom must be 0-{MAX_ZOOM}, got {max_zoom}")
 
         # Calculate center
         center_lon = (xmin + xmax) / 2
