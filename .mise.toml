@@ -1,5 +1,5 @@
 [tools]
-python = "3.14.4"
+python = "3.14.6"
 rust = "1.94.1"
 just = "1.49.0"
 uv = "0.11.6"
